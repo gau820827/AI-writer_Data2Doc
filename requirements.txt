@@ -1,0 +1,15 @@
+# Testing
+mock==2.0.0
+nose==1.3.7
+rednose==1.2.1
+
+# Code coverage
+coverage==4.2
+codecov==2.0.5
+
+# NLP
+numpy==1.13.3
+PyYAML==3.12
+nltk==3.2.5
+scikit-learn==0.19.1
+scipy==1.0.0
