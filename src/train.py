@@ -1,5 +1,6 @@
 """This is core training part, containing different models."""
 import random
+import time
 
 import torch
 import torch.nn as nn
@@ -7,116 +8,14 @@ from torch.autograd import Variable
 from torch import optim
 import torch.nn.functional as F
 
-from preprocessing import readfile, data_iter
+from preprocessing import data_iter
 from settings import file_loc, use_cuda, MAX_LENGTH
+from dataprepare import loaddata, data2index
+from model import EncoderRNN, AttnDecoderRNN
+from util import gettime
 
 
-# TODO: 1. Finish Evaluation part
-#       2. Extend the model
-
-
-class Lang:
-    """A class to summarize encoding information.
-
-    This class will build three dicts:
-    word2index, word2count, and index2word for
-    embedding information. Once a set of data is
-    encoded, we can transform it to corrsponding
-    indexing use the word2index, and map it back
-    using index2word.
-
-    Attributes:
-        word2index: A dict mapping word to index.
-        word2count: A dict mapping word to counts in the corpus.
-        index2word: A dict mapping index to word.
-
-    """
-
-    def __init__(self, name):
-        """Init Lang with a name."""
-        self.name = name
-        self.word2index = {}
-        self.word2count = {}
-        self.index2word = {0: "<SOS>", 1: "<EOS>", 2: "<PAD>"}
-        self.n_words = 3  # Count SOS and EOS
-
-    def addword(self, word):
-        """Add a word to the dict."""
-        if word not in self.word2index:
-            self.word2index[word] = self.n_words
-            self.word2count[word] = 1
-            self.index2word[self.n_words] = word
-            self.n_words += 1
-        else:
-            self.word2count[word] += 1
-
-
-# embedding(r.t) embedding(r.e) embedding(r.m)
-# embedding_dim = 600
-# Linear([r.t, r.e, r.m], embedding_dim)
-
-def readLang(data_set):
-    """The function to wrap up a data_set.
-
-    This funtion will wrap up a extracted data_set
-    into word2index inforamtion. The data set should
-    be a list of tuples containing ([triplets], summarize).
-
-    Args:
-        data_set: A list of tuples containig 2 items.
-
-    Returns:
-        4 Langs for (r.t, r.e, r.m, 'summary')
-        (ex. AST, 'Al Hortford', 10, 'summary')
-
-    """
-    rt = Lang('rt')
-    re = Lang('re')
-    rm = Lang('rm')
-    summarize = Lang('summarize')
-
-    for v in data_set:
-        for triplet in v[0]:
-            rt.addword(triplet[0])
-            re.addword(triplet[1])
-            rm.addword(triplet[2])
-        for word in v[1]:
-            summarize.addword(word)
-
-    return rt, re, rm, summarize
-
-
-def preparedata(data_dir):
-    """Prepare the data for training."""
-
-    train_set = readfile(data_dir + 'train.json')
-    valid_set = readfile(data_dir + 'valid.json')
-    test_set = readfile(data_dir + 'test.json')
-
-    rt_train, re_train, rm_train, sum_train = readLang(train_set)
-
-    print("Read %s box score summary" % len(train_set))
-    print("Embedding size of (r.t, r.e, r.m) and summary:")
-    print("({}, {}, {}), {}".format(rt_train.n_words, re_train.n_words, rm_train.n_words, sum_train.n_words))
-
-    # Extend the dataset with indexing
-    for i in range(len(train_set)):
-        idx_triplets = []
-        for triplet in train_set[i][0]:
-            idx_triplet = [None, None, None]
-            idx_triplet[0] = rt_train.word2index[triplet[0]]
-            idx_triplet[1] = re_train.word2index[triplet[1]]
-            idx_triplet[2] = rm_train.word2index[triplet[2]]
-            idx_triplets.append(tuple(idx_triplet))
-
-        idx_summary = []
-        for word in train_set[i][1]:
-            idx_summary.append(sum_train.word2index[word])
-        idx_summary.append(1)   # Append 'EOS' at the end
-
-        train_set[i].append([idx_triplets] + [idx_summary])
-
-    return train_set, rt_train, re_train, rm_train, sum_train
+# TODO: 2. Extend the model
 
 
 def get_batch(batch):
@@ -149,11 +48,6 @@ def get_batch(batch):
         max_summary_length = max(max_summary_length, len(d[2][1]))
 
         batch_idx_data[3].append(d[2][1])
-
-    # Add paddings for summary
-    for i in range(len(batch_idx_data[3])):
-        paddings = [2 for k in range(len(batch_idx_data[3][i]) - max_summary_length)]
-        batch_idx_data[3][i] += paddings
 
     return batch_data, batch_idx_data
 
@@ -200,76 +94,77 @@ class docEmbedding(nn.Module):
                 layer.bias.data.fill_(0)
 
 
-class EncoderRNN(nn.Module):
-    def __init__(self, hidden_size, embedding_layer, n_layers=1):
-        super(EncoderRNN, self).__init__()
-        self.n_layers = n_layers
-        self.hidden_size = hidden_size
+def sentenceloss(rt, re, rm, summary, encoder, decoder,
+                 encoder_optimizer, decoder_optimizer,
+                 criterion, embedding_size):
+    """Function for train on sentences.
 
-        self.embedding = embedding_layer
-        self.gru = nn.GRUCell(hidden_size, hidden_size)
+    This function will calculate the gradient and NLLloss on sentences,
+    , update the model, and then return the average loss.
 
-    def forward(self, rt, re, rm, hidden):
-        embedded = self.embedding(rt, re, rm)
-        output = embedded
+    """
+    # Zero the gradient
+    encoder_optimizer.zero_grad()
+    decoder_optimizer.zero_grad()
 
-        for i in range(self.n_layers):
-            output = self.gru(output, hidden)
+    batch_length = rt.size()[0]
+    input_length = rt.size()[1]
+    target_length = summary.size()[1]
 
-        return output
+    encoder_outputs = Variable(torch.zeros(batch_length, MAX_LENGTH, embedding_size))
+    encoder_outputs = encoder_outputs.cuda() if use_cuda else encoder_outputs
 
-    def initHidden(self, batch_size):
-        result = Variable(torch.zeros(batch_size, self.hidden_size))
-        if use_cuda:
-            return result.cuda()
-        else:
-            return result
+    encoder_hidden = encoder.initHidden(batch_length)
 
+    loss = 0
 
-class AttnDecoderRNN(nn.Module):
-    def __init__(self, hidden_size, output_size, max_length=MAX_LENGTH, n_layers=1, dropout_p=0.1):
-        super(AttnDecoderRNN, self).__init__()
-        self.hidden_size = hidden_size
-        self.output_size = output_size
-        self.n_layers = n_layers
-        self.dropout_p = dropout_p
-        self.max_length = max_length
+    # Encoding
+    for ei in range(input_length):
+        encoder_hidden = encoder(rt[:, ei], re[:, ei], rm[:, ei], encoder_hidden)
 
-        self.embedding = nn.Embedding(self.output_size, self.hidden_size)
-        self.attn = nn.Linear(self.hidden_size * 2, self.max_length)
-        self.attn_combine = nn.Linear(self.hidden_size * 2, self.hidden_size)
-        self.dropout = nn.Dropout(self.dropout_p)
-        self.gru = nn.GRUCell(self.hidden_size, self.hidden_size)
-        self.out = nn.Linear(self.hidden_size, self.output_size)
+        # Store memory information
+        encoder_outputs[:, ei] = encoder_hidden
 
-    def forward(self, input, hidden, encoder_output, encoder_outputs):
-        embedded = self.embedding(input)
-        embedded = self.dropout(embedded)
+    decoder_hidden = encoder_hidden
 
-        attn_weights = F.softmax(
-            self.attn(torch.cat((embedded, hidden), dim=1)))
-        attn_weights = attn_weights.unsqueeze(1)
+    decoder_input = Variable(torch.LongTensor(batch_length).zero_())
+    decoder_input = decoder_input.cuda() if use_cuda else decoder_input
 
-        attn_applied = torch.bmm(attn_weights, encoder_outputs)
-        attn_applied = attn_applied.squeeze(1)
+    teacher_forcing_ratio = 0.5
+    use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
 
-        output = torch.cat((embedded, attn_applied), dim=1)
-        output = self.attn_combine(output)
+    if use_teacher_forcing:
+        # Teacher forcing: Feed the target as the next input
+        for di in range(target_length):
+            decoder_output, decoder_hidden, decoder_attention = decoder(
+                decoder_input, decoder_hidden, encoder_hidden,
+                encoder_outputs)
 
-        for i in range(self.n_layers):
-            output = F.relu(output)
-            output = self.gru(output, hidden)
+            loss += criterion(decoder_output, summary[:, di])
+            decoder_input = summary[:, di]  # Teacher forcing
 
-        output_hidden = output
-        output = F.log_softmax(self.out(output))
-        return output, output_hidden, attn_weights
+    else:
+        # Without teacher forcing: use its own predictions as the next input
+        for di in range(target_length):
+            decoder_output, decoder_hidden, decoder_attention = decoder(
+                decoder_input, decoder_hidden, encoder_hidden,
+                encoder_outputs)
 
-    def initHidden(self, batch_size):
-        result = Variable(torch.zeros(batch_size, self.hidden_size))
-        if use_cuda:
-            return result.cuda()
-        else:
-            return result
+            topv, topi = decoder_output.data.topk(1)
+
+            decoder_input = Variable(topi.squeeze(1))
+            decoder_input = decoder_input.cuda() if use_cuda else decoder_input
+
+            loss += criterion(decoder_output, summary[:, di])
+            # if ni == '<EOS>':
+            #     break
+
+    loss.backward()
+
+    encoder_optimizer.step()
+    decoder_optimizer.step()
+
+    return loss.data[0] / target_length
 
 
 def addpaddings(summary):
@@ -287,29 +182,30 @@ def addpaddings(summary):
     return summary
 
 
-def train():
-    # Temp parameter
-    embedding_size = 600
-    learning_rate = 0.1
-    iter_time = 10
+def train(train_set, langs, embedding_size=600, learning_rate=0.01,
+          iter_time=10, batch_size=32, get_loss=1000, save_model=5000):
+    """The training procedure."""
+    # Set the timer
+    start = time.time()
 
-    train_set, rt_train, re_train, rm_train, sum_train = preparedata(file_loc)
-    train_iter = data_iter(train_set)
+    train_iter = data_iter(train_set, batch_size=batch_size)
 
     # Initialize the model
-    emb = docEmbedding(rt_train.n_words, re_train.n_words,
-                       rm_train.n_words, embedding_size)
+    emb = docEmbedding(langs['rt'].n_words, langs['re'].n_words,
+                       langs['rm'].n_words, embedding_size)
     emb.init_weights()
 
     encoder = EncoderRNN(embedding_size, emb)
-    decoder = AttnDecoderRNN(embedding_size, sum_train.n_words)
+    decoder = AttnDecoderRNN(embedding_size, langs['summary'].n_words)
 
     encoder_optimizer = optim.SGD(encoder.parameters(), lr=learning_rate)
     decoder_optimizer = optim.SGD(decoder.parameters(), lr=learning_rate)
 
     criterion = nn.NLLLoss()
 
-    for iteration in range(iter_time):
+    total_loss = 0
+
+    for iteration in range(1, iter_time + 1):
 
         # Get data
         data, idx_data = get_batch(next(train_iter))
@@ -329,68 +225,128 @@ def train():
         # For Decoding
         summary = Variable(torch.LongTensor(summary))
 
-        # Zero the gradient
-        encoder_optimizer.zero_grad()
-        decoder_optimizer.zero_grad()
+        # Get the average loss on the sentences
+        loss = sentenceloss(rt, re, rm, summary, encoder, decoder,
+                            encoder_optimizer, decoder_optimizer, criterion,
+                            embedding_size)
 
-        batch_length = rt.size()[0]
-        input_length = rt.size()[1]
-        target_length = summary.size()[1]
+        total_loss += loss
 
-        encoder_outputs = Variable(torch.zeros(batch_length, MAX_LENGTH, embedding_size))
-        encoder_outputs = encoder_outputs.cuda() if use_cuda else encoder_outputs
+        # Print the information and save model
+        if iteration % get_loss == 0:
+            print("Time {}, iter {}, avg loss = {:.4f}".format(
+                gettime(start), iteration, total_loss / get_loss))
+        if iteration % save_model == 0:
+            torch.save(encoder.state_dict(), "encoder_{}".format(iteration))
+            torch.save(decoder.state_dict(), "decoder_{}".format(iteration))
+            print("Save the model at iter {}".format(iteration))
 
-        encoder_hidden = encoder.initHidden(batch_length)
+    return encoder, decoder
 
-        loss = 0
 
-        # Encoding
-        for ei in range(input_length):
-            encoder_hidden = encoder(rt[:, ei], re[:, ei], rm[:, ei], encoder_hidden)
+def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size):
+    """This function will predict the sentecnes given boxscore.
 
-            # Store memory information
-            encoder_outputs[:, ei] = encoder_hidden
+    Encode the given box score, decode it to sentences, and then
+    return the prediction and attention matrix.
 
-        decoder_hidden = encoder_hidden
+    Right now, the prediction length is limited to target length.
 
-        decoder_input = Variable(torch.LongTensor(batch_length).zero_())
+    """
+    batch_length = rt.size()[0]
+    input_length = rt.size()[1]
+    target_length = summary.size()[1]
+
+    encoder_outputs = Variable(torch.zeros(batch_length, MAX_LENGTH, embedding_size))
+    encoder_outputs = encoder_outputs.cuda() if use_cuda else encoder_outputs
+
+    encoder_hidden = encoder.initHidden(batch_length)
+
+    # Encoding
+    for ei in range(input_length):
+        encoder_hidden = encoder(rt[:, ei], re[:, ei], rm[:, ei], encoder_hidden)
+
+        # Store memory information
+        encoder_outputs[:, ei] = encoder_hidden
+
+    decoder_hidden = encoder_hidden
+
+    decoder_input = Variable(torch.LongTensor(batch_length).zero_())
+    decoder_input = decoder_input.cuda() if use_cuda else decoder_input
+    decoder_hidden = encoder_hidden
+
+    decoded_words = []
+    decoder_attentions = torch.zeros(target_length, MAX_LENGTH)
+
+    for di in range(target_length):
+        decoder_output, decoder_hidden, decoder_attention = decoder(
+            decoder_input, decoder_hidden, encoder_hidden, encoder_outputs)
+
+        # Get the attention vector at each prediction
+        decoder_attentions[di] = decoder_attention.data[0][0]
+
+        # decode the word
+        topv, topi = decoder_output.data.topk(1)
+        ni = topi[0][0]
+        if ni == 1:
+            decoded_words.append('<EOS>')
+            break
+        else:
+            decoded_words.append(lang.index2word[ni])
+
+        decoder_input = Variable(topi.squeeze(1))
         decoder_input = decoder_input.cuda() if use_cuda else decoder_input
 
-        teacher_forcing_ratio = 0.001
-        use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
+    return decoded_words, decoder_attentions[:di + 1]
 
-        if use_teacher_forcing:
-            # Teacher forcing: Feed the target as the next input
-            for di in range(target_length):
-                decoder_output, decoder_hidden, decoder_attention = decoder(
-                    decoder_input, decoder_hidden, encoder_hidden,
-                    encoder_outputs)
 
-                loss += criterion(decoder_output, summary[:, di])
-                decoder_input = summary[:, di]  # Teacher forcing
+def evaluate(encoder, decoder, valid_set, lang,
+             embedding_size, iter_time=10):
+    """The evaluate procedure."""
+    # Get evaluate data
+    valid_iter = data_iter(valid_set, batch_size=1)
 
-        else:
-            # Without teacher forcing: use its own predictions as the next input
-            for di in range(target_length):
-                decoder_output, decoder_hidden, decoder_attention = decoder(
-                    decoder_input, decoder_hidden, encoder_hidden,
-                    encoder_outputs)
+    for iteration in range(iter_time):
 
-                topv, topi = decoder_output.data.topk(1)
+        # Get data
+        data, idx_data = get_batch(next(valid_iter))
+        rt, re, rm, summary = idx_data
 
-                decoder_input = Variable(topi.squeeze(1))
-                decoder_input = decoder_input.cuda() if use_cuda else decoder_input
+        # For Encoding
+        rt = Variable(torch.LongTensor(rt))
+        re = Variable(torch.LongTensor(re))
+        rm = Variable(torch.LongTensor(rm))
 
-                loss += criterion(decoder_output, summary[:, di])
-                # if ni == '<EOS>':
-                #     break
+        # For Decoding
+        summary = Variable(torch.LongTensor(summary))
 
-        loss.backward()
+        # Get decoding words and attention matrix
+        decoded_words, decoder_attentions = predictwords(rt, re, rm, summary,
+                                                         encoder, decoder, lang,
+                                                         embedding_size)
 
-        encoder_optimizer.step()
-        decoder_optimizer.step()
+        print(decoded_words)
 
-        print("iter {}, loss = {}".format(iteration, loss))
+
+def main():
+    # Default parameter
+    embedding_size = 600
+    learning_rate = 0.01
+    train_iter_time = 1
+    batch_size = 2
+
+    # For Training
+    train_data, train_lang = loaddata(file_loc, 'train')
+    train_data = data2index(train_data, train_lang)
+    encoder, decoder = train(train_data, train_lang,
+                             embedding_size=embedding_size, learning_rate=learning_rate,
+                             iter_time=train_iter_time, batch_size=batch_size)
+
+    # For evaluation
+    valid_data, _ = loaddata(file_loc, 'valid')
+    valid_data = data2index(valid_data, train_lang)
+    evaluate(encoder, decoder, valid_data, train_lang['summary'], embedding_size)
+
 
 if __name__ == '__main__':
-    train()
+    main()
