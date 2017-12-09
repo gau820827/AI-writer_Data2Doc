@@ -198,6 +198,10 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
     encoder = EncoderRNN(embedding_size, emb)
     decoder = AttnDecoderRNN(embedding_size, langs['summary'].n_words)
 
+    if use_cuda:
+        encoder.cuda()
+        decoder.cuda()
+
     encoder_optimizer = optim.SGD(encoder.parameters(), lr=learning_rate)
     decoder_optimizer = optim.SGD(decoder.parameters(), lr=learning_rate)
 
@@ -224,6 +228,9 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
 
         # For Decoding
         summary = Variable(torch.LongTensor(summary))
+
+        if use_cuda:
+            rt, re, rm, summary = rt.cuda(), re.cuda(), rm.cuda(), summary.cuda()
 
         # Get the average loss on the sentences
         loss = sentenceloss(rt, re, rm, summary, encoder, decoder,
@@ -319,6 +326,9 @@ def evaluate(encoder, decoder, valid_set, lang,
 
         # For Decoding
         summary = Variable(torch.LongTensor(summary))
+
+        if use_cuda:
+            rt, re, rm, summary = rt.cuda(), re.cuda(), rm.cuda(), summary.cuda()
 
         # Get decoding words and attention matrix
         decoded_words, decoder_attentions = predictwords(rt, re, rm, summary,
