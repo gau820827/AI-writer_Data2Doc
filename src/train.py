@@ -11,7 +11,7 @@ import torch.nn.functional as F
 from preprocessing import data_iter
 from settings import file_loc, use_cuda, MAX_LENGTH
 from dataprepare import loaddata, data2index
-from model import EncoderRNN, AttnDecoderRNN
+from model import EncoderRNN, AttnDecoderRNN, docEmbedding
 from util import gettime
 
 
@@ -52,48 +52,6 @@ def get_batch(batch):
     return batch_data, batch_idx_data
 
 
-class docEmbedding(nn.Module):
-    """The class for embedding records.
-
-    This class is for embedding the docvec (r.t, r.e, r.m)
-    into a high dimension space. A MLP with RELU will be applied
-    on the concatenation of the embeddings.
-
-    Attributes:
-        embedding1: embedding for r.t
-        embedding2: embedding for r.e
-        embedding3: embedding for r.m
-        linear: A linear layer mapping [r.t, r.e, r.m] back to one space
-
-    """
-    def __init__(self, rt_size, re_size, rm_size, embedding_dim):
-        super(docEmbedding, self).__init__()
-        self.embedding1 = nn.Embedding(rt_size, embedding_dim)
-        self.embedding2 = nn.Embedding(re_size, embedding_dim)
-        self.embedding3 = nn.Embedding(rm_size, embedding_dim)
-        self.linear = nn.Linear(embedding_dim * 3, embedding_dim)
-
-    def forward(self, rt, re, rm):
-        emb_rt = self.embedding1(rt)
-        emb_re = self.embedding2(re)
-        emb_rm = self.embedding3(rm)
-
-        emb_all = torch.cat([emb_rt, emb_re, emb_rm], dim=1)
-        output = self.linear(emb_all)
-        output = F.relu(output)
-        return output
-
-    def init_weights(self):
-        initrange = 0.1
-        lin_layers = [self.linear]
-        em_layer = [self.embedding1, self.embedding2, self.embedding3]
-
-        for layer in lin_layers + em_layer:
-            layer.weight.data.uniform_(-initrange, initrange)
-            if layer in lin_layers:
-                layer.bias.data.fill_(0)
-
-
 def sentenceloss(rt, re, rm, summary, encoder, decoder,
                  encoder_optimizer, decoder_optimizer,
                  criterion, embedding_size):
@@ -110,6 +68,7 @@ def sentenceloss(rt, re, rm, summary, encoder, decoder,
     batch_length = rt.size()[0]
     input_length = rt.size()[1]
     target_length = summary.size()[1]
+    target_length = 30
 
     encoder_outputs = Variable(torch.zeros(batch_length, MAX_LENGTH, embedding_size))
     encoder_outputs = encoder_outputs.cuda() if use_cuda else encoder_outputs
@@ -130,7 +89,7 @@ def sentenceloss(rt, re, rm, summary, encoder, decoder,
     decoder_input = Variable(torch.LongTensor(batch_length).zero_())
     decoder_input = decoder_input.cuda() if use_cuda else decoder_input
 
-    teacher_forcing_ratio = 0.5
+    teacher_forcing_ratio = 1.0
     use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
 
     if use_teacher_forcing:
@@ -183,7 +142,7 @@ def addpaddings(summary):
 
 
 def train(train_set, langs, embedding_size=600, learning_rate=0.01,
-          iter_time=10, batch_size=32, get_loss=1000, save_model=5000):
+          iter_time=10, batch_size=32, get_loss=1, save_model=5000):
     """The training procedure."""
     # Set the timer
     start = time.time()
@@ -243,6 +202,8 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         if iteration % get_loss == 0:
             print("Time {}, iter {}, avg loss = {:.4f}".format(
                 gettime(start), iteration, total_loss / get_loss))
+            total_loss = 0
+
         if iteration % save_model == 0:
             torch.save(encoder.state_dict(), "encoder_{}".format(iteration))
             torch.save(decoder.state_dict(), "decoder_{}".format(iteration))
@@ -252,7 +213,7 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
 
 
 def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size):
-    """This function will predict the sentecnes given boxscore.
+    """The function will predict the sentecnes given boxscore.
 
     Encode the given box score, decode it to sentences, and then
     return the prediction and attention matrix.
@@ -342,8 +303,8 @@ def main():
     # Default parameter
     embedding_size = 600
     learning_rate = 0.01
-    train_iter_time = 1
-    batch_size = 2
+    train_iter_time = 10000
+    batch_size = 8
 
     # For Training
     train_data, train_lang = loaddata(file_loc, 'train')
