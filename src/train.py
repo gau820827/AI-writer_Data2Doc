@@ -89,7 +89,7 @@ def sentenceloss(rt, re, rm, summary, encoder, decoder,
     decoder_input = Variable(torch.LongTensor(batch_length).zero_())
     decoder_input = decoder_input.cuda() if use_cuda else decoder_input
 
-    teacher_forcing_ratio = 1.0
+    teacher_forcing_ratio = 1.0 
     use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
 
     if use_teacher_forcing:
@@ -116,7 +116,7 @@ def sentenceloss(rt, re, rm, summary, encoder, decoder,
 
             loss += criterion(decoder_output, summary[:, di])
             # if ni == '<EOS>':
-            #     break
+            #    break
 
     loss.backward()
 
@@ -144,6 +144,9 @@ def addpaddings(summary):
 def train(train_set, langs, embedding_size=600, learning_rate=0.01,
           iter_time=10, batch_size=32, get_loss=1, save_model=5000):
     """The training procedure."""
+    # Set the record file
+    f = open('baseline.result', 'wt')
+
     # Set the timer
     start = time.time()
 
@@ -195,20 +198,20 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         loss = sentenceloss(rt, re, rm, summary, encoder, decoder,
                             encoder_optimizer, decoder_optimizer, criterion,
                             embedding_size)
-
         total_loss += loss
 
         # Print the information and save model
-        if iteration % get_loss == 0:
+        if iteration % show_loss == 0:
             print("Time {}, iter {}, avg loss = {:.4f}".format(
                 gettime(start), iteration, total_loss / get_loss))
             total_loss = 0
-
+        
         if iteration % save_model == 0:
             torch.save(encoder.state_dict(), "encoder_{}".format(iteration))
             torch.save(decoder.state_dict(), "decoder_{}".format(iteration))
-            print("Save the model at iter {}".format(iteration))
-
+            print("Save the model at iter {}".format(iteration), file=f)
+    
+    f.close()
     return encoder, decoder
 
 

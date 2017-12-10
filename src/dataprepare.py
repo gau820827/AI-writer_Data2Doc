@@ -24,7 +24,7 @@ class Lang:
         """Init Lang with a name."""
         self.name = name
         self.word2index = {"<SOS>": 0, "<EOS>": 1, "<PAD>": 2, "<UNK>": 3}
-        self.word2count = {}
+        self.word2count = {"<EOS>": 0}
         self.index2word = {0: "<SOS>", 1: "<EOS>", 2: "<PAD>", 3: "<UNK>"}
         self.n_words = 4  # Count SOS and EOS
 
