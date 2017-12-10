@@ -39,10 +39,6 @@ class Lang:
             self.word2count[word] += 1
 
 
-# embedding(r.t) embedding(r.e) embedding(r.m)
-# embedding_dim = 600
-# Linear([r.t, r.e, r.m], embedding_dim)
-
 def readLang(data_set):
     """The function to wrap up a data_set.
 
@@ -140,6 +136,17 @@ def data2index(data_set, langs):
         data_set[i].append([idx_triplets] + [idx_summary])
 
     return data_set
+
+
+def showsentences(dataset):
+    """The function will display the summary by sentences."""
+    for t in dataset:
+        for w in t[1]:
+            if w == '.':
+                print('')
+            else:
+                print(w, end=' ')
+
 
 if __name__ == '__main__':
     train_data, train_lang = loaddata(file_loc, 'train')
