@@ -15,7 +15,7 @@ from util import gettime
 
 from settings import file_loc, use_cuda, MAX_LENGTH
 from settings import EMBEDDING_SIZE, LR, ITER_TIME, BATCH_SIZE
-from settings import GET_LOSS, SAVE_MODEL, ENCODER_STYLE
+from settings import GET_LOSS, SAVE_MODEL, ENCODER_STYLE, OUTPUT_FILE
 
 # TODO: 2. Extend the model
 
@@ -209,9 +209,9 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
             total_loss = 0
 
         if iteration % save_model == 0:
-            torch.save(encoder.state_dict(), "encoder_{}".format(iteration))
-            torch.save(decoder.state_dict(), "decoder_{}".format(iteration))
-            print("Save the model at iter {}".format(iteration), file=f)
+            torch.save(encoder.state_dict(), "{}_encoder_{}".format(OUTPUT_FILE, iteration))
+            torch.save(decoder.state_dict(), "{}_decoder_{}".format(OUTPUT_FILE, iteration))
+            print("Save the model at iter {}".format(iteration))
 
     return encoder, decoder
 
@@ -303,7 +303,17 @@ def evaluate(encoder, decoder, valid_set, lang,
         print(decoded_words)
 
 
+def showconfig():
+    """Display the configuration."""
+    print("EMBEDDING_SIZE = {}\nLR = {}\nITER_TIME = {}\nBATCH_SIZE = {}".format(
+        EMBEDDING_SIZE, LR, ITER_TIME, BATCH_SIZE))
+    print("ENCODER_STYLE = {}\nOUTPUT_FILE = {}".format(ENCODER_STYLE, OUTPUT_FILE))
+
+
 def main():
+    # Display Configuration
+    showconfig()
+
     # Default parameter
     embedding_size = EMBEDDING_SIZE
     learning_rate = LR
