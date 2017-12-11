@@ -1,6 +1,6 @@
 """This is the module for preparing data."""
 from preprocessing import readfile
-from settings import file_loc
+from settings import file_loc, MAX_SENTENCES
 
 
 class Lang:
@@ -97,7 +97,7 @@ def loaddata(data_dir, mode='train'):
     return data_set, langs
 
 
-def data2index(data_set, langs):
+def data2index(data_set, langs, max_sentences=MAX_SENTENCES):
     """The function for indexing the data.
 
     This function will extending the dataset applying
@@ -129,8 +129,15 @@ def data2index(data_set, langs):
             idx_triplets.append(tuple(idx_triplet))
 
         idx_summary = []
+        sentence_cnt = 0
         for word in data_set[i][1]:
             idx_summary.append(findword2index(langs['summary'], word))
+
+            if MAX_SENTENCES is not None and word == '.':
+                sentence_cnt += 1
+                if sentence_cnt >= MAX_SENTENCES:
+                    break
+
         idx_summary.append(1)   # Append 'EOS' at the end
 
         data_set[i].append([idx_triplets] + [idx_summary])
