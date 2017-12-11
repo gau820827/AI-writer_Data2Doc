@@ -15,6 +15,7 @@ from util import gettime
 
 from settings import file_loc, use_cuda, MAX_LENGTH
 from settings import EMBEDDING_SIZE, LR, ITER_TIME, BATCH_SIZE
+from settings import GET_LOSS, SAVE_MODEL, ENCODER_STYLE
 
 # TODO: 2. Extend the model
 
@@ -141,8 +142,8 @@ def addpaddings(summary):
 
 
 def train(train_set, langs, embedding_size=600, learning_rate=0.01,
-          iter_time=10, batch_size=32, get_loss=1, save_model=5000,
-          encoder_style='LIN'):
+          iter_time=10, batch_size=32, get_loss=GET_LOSS, save_model=SAVE_MODEL,
+          encoder_style=ENCODER_STYLE):
     """The training procedure."""
     # Set the timer
     start = time.time()
