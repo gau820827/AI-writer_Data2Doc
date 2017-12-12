@@ -52,6 +52,7 @@ def readfile(filename):
     with open(filename, 'r') as f:
         data = json.load(f)
         for d in data:
+            d['summary'].append('<EOS>')
             result.append([doc2vec(d), d['summary']])
     return result
 
