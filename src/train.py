@@ -11,9 +11,9 @@ import torch.nn.functional as F
 from preprocessing import data_iter
 from dataprepare import loaddata, data2index
 from model import EncoderLIN, EncoderRNN, AttnDecoderRNN, docEmbedding
-from util import gettime
+from util import gettime, load_model
 
-from settings import file_loc, use_cuda, MAX_LENGTH
+from settings import file_loc, use_cuda, MAX_LENGTH, USE_MODEL
 from settings import EMBEDDING_SIZE, LR, ITER_TIME, BATCH_SIZE
 from settings import MAX_SENTENCES, ENCODER_STYLE
 from settings import GET_LOSS, SAVE_MODEL, OUTPUT_FILE
@@ -144,7 +144,7 @@ def addpaddings(summary):
 
 def train(train_set, langs, embedding_size=600, learning_rate=0.01,
           iter_time=10, batch_size=32, get_loss=GET_LOSS, save_model=SAVE_MODEL,
-          encoder_style=ENCODER_STYLE):
+          encoder_style=ENCODER_STYLE, use_model=USE_MODEL):
     """The training procedure."""
     # Set the timer
     start = time.time()
@@ -166,6 +166,10 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
     if use_cuda:
         encoder.cuda()
         decoder.cuda()
+
+    if use_model is not None:
+        encoder = load_model(encoder, use_model[0])
+        decoder = load_model(decoder, use_model[1])
 
     # Different choice of optimizer
     encoder_optimizer = optim.Adagrad(encoder.parameters(), lr=learning_rate, lr_decay=0, weight_decay=0)
@@ -314,7 +318,7 @@ def showconfig():
     print("EMBEDDING_SIZE = {}\nLR = {}\nITER_TIME = {}\nBATCH_SIZE = {}".format(
         EMBEDDING_SIZE, LR, ITER_TIME, BATCH_SIZE))
     print("MAX_SENTENCES = {}\nENCODER_STYLE = {}".format(MAX_SENTENCES, ENCODER_STYLE))
-    print("OUTPUT_FILE = {}".format(OUTPUT_FILE))
+    print("USE_MODEL = {}\nOUTPUT_FILE = {}".format(USE_MODEL, OUTPUT_FILE))
 
 
 def main():

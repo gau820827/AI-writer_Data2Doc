@@ -2,6 +2,7 @@
 import time
 import math
 import numpy as np
+import torch
 
 
 def asMinutes(s):
@@ -21,3 +22,15 @@ def timeSince(since, percent):
     es = s / (percent)
     rs = es - s
     return '%s (- %s)' % (asMinutes(s), asMinutes(rs))
+
+
+def load_model(model, model_src, mode='eval'):
+    state_dict = torch.load(model_src, map_location=lambda storage, loc: storage)
+    model.load_state_dict(state_dict)
+
+    if mode == 'eval':
+        model.eval()
+    else:
+        model.train()
+
+    return model
