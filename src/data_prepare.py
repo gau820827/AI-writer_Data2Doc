@@ -1,3 +1,8 @@
+import torch
+import torch.autograd as autograd
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
 
 import numpy as np
 import random
@@ -19,6 +24,7 @@ class Prepare_data:
 
         self.labels = self.h5fi[datatype + 'labels'].value
         self.labelnum = np.asarray(list(map(lambda x : x[-1], self.labels)))
+        import pdb; pdb.set_trace()
 
         self.label_pad = np.amax(self.labels)
         self.word_pad = np.amax(self.sen) + 1
@@ -59,10 +65,19 @@ class Prepare_data:
         return x
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='data prepare class')
+    parser = argparse.ArgumentParser(description='main for training the CNN extraction system')
     parser.add_argument('-input_path', type=str, default="roto-ie.h5",
                         help="h5df file path")
+    parser.add_argument('-output_fi', type=str, default="",
+                        help="desired path to output file")
+    parser.add_argument('-label', type=str, default="roto-ie.labels",
+                        help="file containing label to index")
+    parser.add_argument('-word_dict', type=str, default='roto-ie.dict',
+                        help="file containing word to index")
+    parser.add_argument('-test', action='store_true', help='use test data')
+    parser.add_argument('-save', action='store_true', help='save the model or not')
+
     args = parser.parse_args()
     data = Prepare_data(args)
-    aaa, bbb, ccc, ddd, eee = next(data.get_batch())
+    aaa, bbb, ccc, ddd = next(data.get_batch())
     print('hello')

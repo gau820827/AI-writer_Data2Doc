@@ -4,19 +4,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-
-class Size_info:
-    def __init__(self, x, y):
-        total_word_num = x
-        total_pos_num = y
-
 # CNN model for relation classification
+
 class Conv_relation_extractor(nn.Module):
-    def __init__(self, config, size_info):
+    def __init__(self, config):
         super(Conv_relation_extractor, self).__init__()
         # reading parameters from config
-        # word_embed_size = config.getint('CNN', 'word_embed_size')
-        # pos_embed_size  = config.getint('CNN', 'pos_embed_size')
+        word_embed_size = config.getint('CNN', 'word_embed_size')
+        pos_embed_size  = config.getint('CNN', 'pos_embed_size')
         word_embed_dim  = config.getint('CNN', 'wrod_embed_dim')
         pos_embed_dim   = config.getint('CNN', 'pos_embed_dim')
         total_embed_dim = word_embed_size + (2 * pos_embed_dim)
@@ -24,15 +19,14 @@ class Conv_relation_extractor(nn.Module):
         filter_num      = config.getint('CNN', 'filter_num')
         kernel_sizes    = config.get('CNN', 'kernel_sizes')
         kernel_sizes = kernel_sizes.split(' ')
-
+        self.kernel_sizes = [int(x) for x in kernel_sizes]
+        self.max_len = config.getint('CNN', 'max_len')
         free_layer_size = config.getint('CNN', 'free_layer_size')
         output_size     = config.getint('CNN', 'output_size')
         dropput         = config.getint('CNN', 'dropput')
 
-        self.kernel_sizes = [int(x) for x in kernel_sizes]
-        self.max_len = config.getint('CNN', 'max_len')
-        self.embed_word = nn.Embedding(size_info.total_word_num, word_embed_dim)
-        self.embed_pos  = nn.Embedding(size_info.total_pos_num, pos_embed_dim)
+        self.embed_word = nn.Embedding(word_embed_size, word_embed_dim)
+        self.embed_pos  = nn.Embedding(pos_embed_size, pos_embed_dim)
 
         # adding conv filters
         for i in range(len(self.kernel_sizes)):
