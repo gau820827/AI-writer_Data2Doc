@@ -20,18 +20,48 @@ def doc2vec(doc):
         the doc.
 
     """
-    ignore = ['FIRST_NAME', 'SECOND_NAME', 'PLAYER_NAME']
-
     triplets = []
-    for _type, _type_dic in doc['box_score'].items():
 
-        # ignore name column
-        if _type in ignore:
-            continue
+    # A helper funtion to make triplet
+    def maketriplets(doc, key, ignore, title):
+        new_triplets = []
+        for _type, _type_dic in doc[key].items():
 
-        for num, value in _type_dic.items():
-            entity = doc['box_score']['PLAYER_NAME'][num]
-            triplets.append((_type, entity, value))
+            # ignore name column
+            if _type in ignore:
+                continue
+
+            # Work Around QQ
+            if key == 'box_score':
+                for num, value in _type_dic.items():
+                    entity = doc[key][title][num]
+                    new_triplets.append((_type, entity, value))
+            else:
+                entity = doc[key][title]
+                new_triplets.append((_type, entity, _type_dic))
+
+        return new_triplets
+
+    for k, v in doc.items():
+        if k in ['vis_line', 'home_line']:
+            ignore = ['TEAM-NAME']
+            title = 'TEAM-NAME'
+            new_triplets = maketriplets(doc, k, ignore, title)
+            triplets += new_triplets
+
+        elif k == 'box_score':
+            ignore = ['FIRST_NAME', 'SECOND_NAME', 'PLAYER_NAME']
+            title = 'PLAYER_NAME'
+            new_triplets = maketriplets(doc, k, ignore, title)
+            triplets += new_triplets
+
+        # Home or Away
+        else:
+            if 'name' in k:
+                new_triplets = [('name', k, v)]
+            elif 'city' in k:
+                new_triplets = [('city', k, v)]
+            triplets += new_triplets
 
     return triplets
 
@@ -81,7 +111,7 @@ def data_iter(source, batch_size=32):
             random.shuffle(order)
         batch_indices = order[start:start + batch_size]
         batch = [source[index] for index in batch_indices]
-        yield [source[index] for index in batch_indices]
+        yield batch
 
 
 def main():

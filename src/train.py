@@ -11,11 +11,12 @@ import torch.nn.functional as F
 from preprocessing import data_iter
 from dataprepare import loaddata, data2index
 from model import EncoderLIN, EncoderRNN, AttnDecoderRNN, docEmbedding
-from util import gettime
+from util import gettime, load_model
 
-from settings import file_loc, use_cuda, MAX_LENGTH
+from settings import file_loc, use_cuda, MAX_LENGTH, USE_MODEL
 from settings import EMBEDDING_SIZE, LR, ITER_TIME, BATCH_SIZE
-from settings import GET_LOSS, SAVE_MODEL, ENCODER_STYLE, OUTPUT_FILE
+from settings import MAX_SENTENCES, ENCODER_STYLE
+from settings import GET_LOSS, SAVE_MODEL, OUTPUT_FILE
 
 # TODO: 2. Extend the model
 
@@ -143,7 +144,7 @@ def addpaddings(summary):
 
 def train(train_set, langs, embedding_size=600, learning_rate=0.01,
           iter_time=10, batch_size=32, get_loss=GET_LOSS, save_model=SAVE_MODEL,
-          encoder_style=ENCODER_STYLE):
+          encoder_style=ENCODER_STYLE, use_model=USE_MODEL):
     """The training procedure."""
     # Set the timer
     start = time.time()
@@ -166,8 +167,15 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         encoder.cuda()
         decoder.cuda()
 
-    encoder_optimizer = optim.SGD(encoder.parameters(), lr=learning_rate)
-    decoder_optimizer = optim.SGD(decoder.parameters(), lr=learning_rate)
+    if use_model is not None:
+        encoder = load_model(encoder, use_model[0])
+        decoder = load_model(decoder, use_model[1])
+
+    # Different choice of optimizer
+    encoder_optimizer = optim.Adagrad(encoder.parameters(), lr=learning_rate, lr_decay=0, weight_decay=0)
+    decoder_optimizer = optim.Adagrad(decoder.parameters(), lr=learning_rate, lr_decay=0, weight_decay=0)
+    # encoder_optimizer = optim.SGD(encoder.parameters(), lr=learning_rate)
+    # decoder_optimizer = optim.SGD(decoder.parameters(), lr=learning_rate)
 
     criterion = nn.NLLLoss()
 
@@ -300,14 +308,17 @@ def evaluate(encoder, decoder, valid_set, lang,
                                                          encoder, decoder, lang,
                                                          embedding_size)
 
-        print(decoded_words)
+        for word in decoded_words:
+            print(word, end=' ')
+        print('')
 
 
 def showconfig():
     """Display the configuration."""
     print("EMBEDDING_SIZE = {}\nLR = {}\nITER_TIME = {}\nBATCH_SIZE = {}".format(
         EMBEDDING_SIZE, LR, ITER_TIME, BATCH_SIZE))
-    print("ENCODER_STYLE = {}\nOUTPUT_FILE = {}".format(ENCODER_STYLE, OUTPUT_FILE))
+    print("MAX_SENTENCES = {}\nENCODER_STYLE = {}".format(MAX_SENTENCES, ENCODER_STYLE))
+    print("USE_MODEL = {}\nOUTPUT_FILE = {}".format(USE_MODEL, OUTPUT_FILE))
 
 
 def main():
