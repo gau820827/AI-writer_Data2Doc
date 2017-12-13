@@ -9,13 +9,14 @@ import random
 import argparse
 import h5py
 
+from cnn_model import Size_info
 
 class Prepare_data:
     """
     Read the h5 file and get batches
     """
-    def __init__(self, args, datatype='tr'):
-        self.h5fi = h5py.File(args.input_path, 'r')
+    def __init__(self, filepath, datatype='tr'):
+        self.h5fi = h5py.File(filepath, 'r')
         self.sen = self.h5fi[datatype + 'sents'].value
         self.len = self.h5fi[datatype + 'lens'].value
         self.numdists= self.h5fi[datatype + 'numdists'].value
@@ -24,7 +25,6 @@ class Prepare_data:
 
         self.labels = self.h5fi[datatype + 'labels'].value
         self.labelnum = np.asarray(list(map(lambda x : x[-1], self.labels)))
-        import pdb; pdb.set_trace()
 
         self.label_pad = np.amax(self.labels)
         self.word_pad = np.amax(self.sen) + 1
@@ -34,9 +34,12 @@ class Prepare_data:
     def __def__ (self):
         self.h5fi.close()
 
-    def get_idx_range(self):
-        return  self.label_pad, self.word_pad, \
-                self.ent_dist_pad, self.num_dist_pad
+    def get_size_info(self):
+        size_info = Size_info(label_size=self.label_pad, word_embed_size=self.word_pad, \
+                  entpos_size=self.ent_dist_pad, numpos_size=self.num_dist_pad, \
+                  max_len=np.amax(self.len))
+        return size_info
+
 
     def get_batch(self, batch_size=32):
         data_size = len(self.sen)
@@ -79,5 +82,5 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     data = Prepare_data(args)
-    aaa, bbb, ccc, ddd = next(data.get_batch())
+    aaa, bbb, ccc, ddd, eee = next(data.get_batch())
     print('hello')
