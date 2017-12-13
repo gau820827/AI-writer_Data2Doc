@@ -15,7 +15,8 @@ from util import gettime
 
 from settings import file_loc, use_cuda, MAX_LENGTH
 from settings import EMBEDDING_SIZE, LR, ITER_TIME, BATCH_SIZE
-from settings import GET_LOSS, SAVE_MODEL, ENCODER_STYLE, OUTPUT_FILE
+from settings import MAX_SENTENCES, ENCODER_STYLE
+from settings import GET_LOSS, SAVE_MODEL, OUTPUT_FILE
 
 # TODO: 2. Extend the model
 
@@ -166,8 +167,11 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         encoder.cuda()
         decoder.cuda()
 
-    encoder_optimizer = optim.SGD(encoder.parameters(), lr=learning_rate)
-    decoder_optimizer = optim.SGD(decoder.parameters(), lr=learning_rate)
+    # Different choice of optimizer
+    encoder_optimizer = optim.Adagrad(encoder.parameters(), lr=learning_rate, lr_decay=0, weight_decay=0)
+    decoder_optimizer = optim.Adagrad(decoder.parameters(), lr=learning_rate, lr_decay=0, weight_decay=0)
+    # encoder_optimizer = optim.SGD(encoder.parameters(), lr=learning_rate)
+    # decoder_optimizer = optim.SGD(decoder.parameters(), lr=learning_rate)
 
     criterion = nn.NLLLoss()
 
@@ -300,14 +304,17 @@ def evaluate(encoder, decoder, valid_set, lang,
                                                          encoder, decoder, lang,
                                                          embedding_size)
 
-        print(decoded_words)
+        for word in decoded_words:
+            print(word, end=' ')
+        print('')
 
 
 def showconfig():
     """Display the configuration."""
     print("EMBEDDING_SIZE = {}\nLR = {}\nITER_TIME = {}\nBATCH_SIZE = {}".format(
         EMBEDDING_SIZE, LR, ITER_TIME, BATCH_SIZE))
-    print("ENCODER_STYLE = {}\nOUTPUT_FILE = {}".format(ENCODER_STYLE, OUTPUT_FILE))
+    print("MAX_SENTENCES = {}\nENCODER_STYLE = {}".format(MAX_SENTENCES, ENCODER_STYLE))
+    print("OUTPUT_FILE = {}".format(OUTPUT_FILE))
 
 
 def main():
