@@ -19,10 +19,13 @@ class Prepare_data:
         self.datatype = datatype
         self.h5fi = h5py.File(filepath, 'r')
         self.sen = self.h5fi[datatype + 'sents'].value
+        # the length of the sentences
         self.len = self.h5fi[datatype + 'lens'].value
         self.entdists = self._shift_nagative(self.h5fi[datatype + 'entdists'].value)
         self.numdists = self._shift_nagative(self.h5fi[datatype + 'numdists'].value)
-
+        # to do cut the vector by the length
+        # add padding
+        # always using numpy arrayt
         self.labels = self.h5fi[datatype + 'labels'].value
         self.labelnum = list(map(lambda x : x[-1], self.labels))
 
@@ -30,12 +33,12 @@ class Prepare_data:
         self.word_pad = np.amax(self.sen) + 1
         self.ent_dist_pad = np.amax(self.entdists) + 1
         self.num_dist_pad = np.amax(self.numdists) + 1
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
 
-        self.sen = self._to_list_and_padding(self.sen, self.word_pad)
-        self.numdists = self._to_list_and_padding(self.numdists, self.num_dist_pad)
-        self.entdists = self._to_list_and_padding(self.entdists, self.ent_dist_pad)
-        self.labels = self._to_list_and_padding(self.labels, self.label_pad)
+        self.sen = self._add_padding(self.sen, self.word_pad)
+        self.numdists = self._add_padding(self.numdists, self.num_dist_pad)
+        self.entdists = self._add_padding(self.entdists, self.ent_dist_pad)
+        self.labels = self._add_padding(self.labels, self.label_pad)
 
     def __def__ (self):
         self.h5fi.close()
@@ -46,14 +49,11 @@ class Prepare_data:
                   max_len=np.amax(self.len))
         return size_info
 
-    def _to_list_and_padding(self, x, padding):
-        x = x.tolist()
-        # x = list(map(lambda x : x if != -1 else padding, x))
-        for i in range(len(x)):
-            for j in range(len(x[i])):
-                if x[i][j] == -1:
-                    x[i][j] = padding
+    def _add_padding(self, x, padding):
+        x[x == -1] = padding;
+        # import pdb; pdb.set_trace()
         return x
+
 
 
     def get_batch(self, batch_size=32):
@@ -66,15 +66,18 @@ class Prepare_data:
                 start = 0
                 random.shuffle(order)
             batch_indices = order[start : start + batch_size]
-            sen_batch = [self.sen[idx]for idx in batch_indices]
-            ent_dist_batch = [self.entdists[idx] for idx in batch_indices]
-            num_dist_batch = [self.numdists[idx] for idx in batch_indices]
+            lengths = np.array([self.len[idx] for idx in batch_indices ])
+            max_length = np.amax(lengths)
+            sen_batch = np.array([self.sen[idx][:max_length]for idx in batch_indices])
+            # import pdb; pdb.set_trace()
+            ent_dist_batch = np.array([self.entdists[idx][:max_length] for idx in batch_indices])
+            num_dist_batch = np.array([self.numdists[idx][:max_length] for idx in batch_indices])
             # do somthing else if the datatype is test
-            label_num_batch = [self.labelnum[idx] for idx in batch_indices]
+            label_num_batch = np.array([self.labelnum[idx] for idx in batch_indices])
             # label_batch = [self.labels[idx][:self.labelnum[idx]] for idx in batch_indices]
-            label_batch = [self.labels[idx][0] for idx in batch_indices]
+            label_batch = np.array([self.labels[idx][0] for idx in batch_indices])
             start += batch_size
-            import pdb; pdb.set_trace()
+            # import pdb; pdb.set_trace()
             yield sen_batch, ent_dist_batch, num_dist_batch, label_batch, label_num_batch
         # import pdb; pdb.set_trace()
         # print('hello')
