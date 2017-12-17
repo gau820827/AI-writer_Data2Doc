@@ -18,15 +18,15 @@ class Prepare_data:
     def __init__(self, filepath, datatype='tr'):
         self.datatype = datatype
         self.h5fi = h5py.File(filepath, 'r')
-        self.sen = self.h5fi[datatype + 'sents'].value - 1
+        self.sen = self.h5fi[datatype + 'sents'].value
         # the length of the sentences
-        self.len = self.h5fi[datatype + 'lens'].value - 1
-        self.entdists = self._shift_nagative(self.h5fi[datatype + 'entdists'].value) - 1
-        self.numdists = self._shift_nagative(self.h5fi[datatype + 'numdists'].value) - 1
+        self.len = self.h5fi[datatype + 'lens'].value
+        self.entdists = self._shift_nagative(self.h5fi[datatype + 'entdists'].value)
+        self.numdists = self._shift_nagative(self.h5fi[datatype + 'numdists'].value)
         # to do cut the vector by the length
         # add padding
         # always using numpy arrayt
-        self.labels = self.h5fi[datatype + 'labels'].value -1
+        self.labels = self.h5fi[datatype + 'labels'].value
         self.labelnum = list(map(lambda x : x[-1], self.labels))
 
         self.label_pad = np.amax(self.labels)
@@ -50,7 +50,7 @@ class Prepare_data:
         return size_info
 
     def _add_padding(self, x, padding):
-        x[x == -2] = padding;
+        x[x == -1] = padding;
         # import pdb; pdb.set_trace()
         return x
 
@@ -68,14 +68,14 @@ class Prepare_data:
             batch_indices = order[start : start + batch_size]
             lengths = np.array([self.len[idx] for idx in batch_indices ])
             max_length = np.amax(lengths)
-            sen_batch = np.array([self.sen[idx][:max_length]for idx in batch_indices])
+            sen_batch = np.array([self.sen[idx][:max_length]for idx in batch_indices]) - 1
             # import pdb; pdb.set_trace()
-            ent_dist_batch = np.array([self.entdists[idx][:max_length] for idx in batch_indices])
-            num_dist_batch = np.array([self.numdists[idx][:max_length] for idx in batch_indices])
+            ent_dist_batch = np.array([self.entdists[idx][:max_length] for idx in batch_indices]) - 1
+            num_dist_batch = np.array([self.numdists[idx][:max_length] for idx in batch_indices]) - 1
             # do somthing else if the datatype is test
             label_num_batch = np.array([self.labelnum[idx] for idx in batch_indices])
             # label_batch = [self.labels[idx][:self.labelnum[idx]] for idx in batch_indices]
-            label_batch = np.array([self.labels[idx][0] for idx in batch_indices])
+            label_batch = np.array([self.labels[idx][0] for idx in batch_indices]) - 1
             start += batch_size
             # import pdb; pdb.set_trace()
             yield sen_batch, ent_dist_batch, num_dist_batch, label_batch, label_num_batch

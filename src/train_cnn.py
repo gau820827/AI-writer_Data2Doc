@@ -63,7 +63,7 @@ def train(training_data):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='main for training the CNN extraction system')
-    parser.add_argument('-input_path', type=str, default="roto-ie.h5",
+    parser.add_argument('-input_path', type=str, default="mini_test.h5",
                         help="h5df file path")
     parser.add_argument('-config', type=str, default="config.cfg",
                         help="path to config file.")
