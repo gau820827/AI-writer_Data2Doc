@@ -42,7 +42,7 @@ def train(training_data):
     total_loss = 0
     for epoch in range(1, num_iteration + 1):
         print("epoch " + str(epoch) + " has begun.")
-        print_count = 1
+        print_count = 0
         for sen_batch, ent_dist_batch, num_dist_batch,\
             label_batch, label_num_batch in training_data.get_batch():
             sen_batch = Variable(torch.from_numpy(sen_batch))
@@ -53,12 +53,14 @@ def train(training_data):
             if use_cuda:
                 sen_batch, ent_dist_batch = sen_batch.cuda(), ent_dist_batch.cuda()
                 num_dist_batch, label_batch = num_dist_batch.cuda(), label_batch.cuda()
-            total_loss += get_batch_loss(model, optimizer, criterion, sen_batch, ent_dist_batch,
+            loss = get_batch_loss(model, optimizer, criterion, sen_batch, ent_dist_batch,
                            num_dist_batch, label_batch)
+
             print_count += 1
             if print_count % 10 == 0:
-                print(total_loss / print_count)
-        torch.save(modle.state_dict(), "{}_{}.model".format(save_file, epoch))
+                print("epoch {}, batchs {} done.\n".format(epoch, print_count))
+                print(loss)
+        # torch.save(modle.state_dict(), "{}_{}.model".format(save_file, epoch))
 
 
 if __name__ == "__main__":
