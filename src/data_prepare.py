@@ -18,15 +18,15 @@ class Prepare_data:
     def __init__(self, filepath, datatype='tr'):
         self.datatype = datatype
         self.h5fi = h5py.File(filepath, 'r')
-        self.sen = self.h5fi[datatype + 'sents'].value
+        self.sen = self.h5fi[datatype + 'sents'].value - 1
         # the length of the sentences
-        self.len = self.h5fi[datatype + 'lens'].value
-        self.entdists = self._shift_nagative(self.h5fi[datatype + 'entdists'].value)
-        self.numdists = self._shift_nagative(self.h5fi[datatype + 'numdists'].value)
+        self.len = self.h5fi[datatype + 'lens'].value - 1
+        self.entdists = self._shift_nagative(self.h5fi[datatype + 'entdists'].value) - 1
+        self.numdists = self._shift_nagative(self.h5fi[datatype + 'numdists'].value) - 1
         # to do cut the vector by the length
         # add padding
         # always using numpy arrayt
-        self.labels = self.h5fi[datatype + 'labels'].value
+        self.labels = self.h5fi[datatype + 'labels'].value -1
         self.labelnum = list(map(lambda x : x[-1], self.labels))
 
         self.label_pad = np.amax(self.labels)
@@ -50,7 +50,7 @@ class Prepare_data:
         return size_info
 
     def _add_padding(self, x, padding):
-        x[x == -1] = padding;
+        x[x == -2] = padding;
         # import pdb; pdb.set_trace()
         return x
 
