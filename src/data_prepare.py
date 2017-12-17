@@ -63,8 +63,7 @@ class Prepare_data:
         start = 0
         while True:
             if start > data_size - batch_size:
-                start = 0
-                random.shuffle(order)
+                raise StopIteration
             batch_indices = order[start : start + batch_size]
             lengths = np.array([self.len[idx] for idx in batch_indices ])
             max_length = np.amax(lengths)

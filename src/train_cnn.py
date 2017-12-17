@@ -42,9 +42,11 @@ def train(training_data):
     total_loss = 0
     for epoch in range(1, num_iteration + 1):
         print("epoch " + str(epoch) + " has begun.")
+        data_iterator = training_data.get_batch()
         print_count = 0
         for sen_batch, ent_dist_batch, num_dist_batch,\
-            label_batch, label_num_batch in training_data.get_batch():
+            label_batch, label_num_batch in data_iterator:
+            # import pdb; pdb.set_trace()
             sen_batch = Variable(torch.from_numpy(sen_batch))
             ent_dist_batch = Variable(torch.from_numpy(ent_dist_batch))
             num_dist_batch = Variable(torch.from_numpy(num_dist_batch))
@@ -57,10 +59,10 @@ def train(training_data):
                            num_dist_batch, label_batch)
 
             print_count += 1
-            if print_count % 10 == 0:
+            if print_count % 100 == 0:
                 print("epoch {}, batchs {} done.\n".format(epoch, print_count))
                 print(loss)
-        # torch.save(modle.state_dict(), "{}_{}.model".format(save_file, epoch))
+        torch.save(model.state_dict(), "{}_{}.model".format(save_file, epoch))
 
 
 if __name__ == "__main__":
