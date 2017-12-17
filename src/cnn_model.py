@@ -38,7 +38,7 @@ class Conv_relation_extractor(nn.Module):
         self.embed_word = nn.Embedding(size_info.word_embed_size, word_embed_dim)
         self.embed_entpos  = nn.Embedding(size_info.entpos_size, pos_embed_dim)
         self.embed_numpos  = nn.Embedding(size_info.numpos_size, pos_embed_dim)
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         # adding conv filters
         self.convs = []
         for i in range(len(self.kernel_sizes)):
