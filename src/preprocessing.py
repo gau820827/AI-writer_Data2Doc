@@ -116,13 +116,13 @@ def data_iter(source, batch_size=32):
 
 def main():
     """A minitest function."""
-    # train_set = readfile(file_loc + 'train.json')
+    train_set = readfile(file_loc + 'train.json')
     # valid_set = readfile(file_loc + 'valid.json')
     # test_set = readfile(file_loc + 'test.json')
 
     # train_iter = data_iter(train_set)
     # valid_iter = data_iter(valid_set)
     # test_iter = data_iter(test_set)
-    
+
 if __name__ == '__main__':
     main()
