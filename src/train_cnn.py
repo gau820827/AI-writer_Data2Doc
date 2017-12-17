@@ -15,7 +15,7 @@ import argparse
 from settings import use_cuda
 
 config = configparser.ConfigParser()
-
+from time import gmtime, strftime
 
 def get_batch_loss(model, optimizer, criterion, sen_batch,
                 ent_dist_batch, num_dist_batch, label_batch):
@@ -62,7 +62,8 @@ def train(training_data):
             if print_count % 100 == 0:
                 print("epoch {}, batchs {} done.\n".format(epoch, print_count))
                 print(loss)
-        torch.save(model.state_dict(), "{}_{}.model".format(save_file, epoch))
+        current_time = strftime("%Y-%m-%d-%H_%M_%S", gmtime())
+        torch.save(model.state_dict(), "{}_{}_{}.model".format(save_file, epoch, current_time))
 
 
 if __name__ == "__main__":
