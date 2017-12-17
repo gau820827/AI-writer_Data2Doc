@@ -281,15 +281,16 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size):
 
 
 def evaluate(encoder, decoder, valid_set, lang,
-             embedding_size, iter_time=10):
+             embedding_size, iter_time=10, verbose=True):
     """The evaluate procedure."""
     # Get evaluate data
-    valid_iter = data_iter(valid_set, batch_size=1)
+    valid_iter = data_iter(valid_set, batch_size=1, shuffle=False)
 
     for iteration in range(iter_time):
 
         # Get data
         data, idx_data = get_batch(next(valid_iter))
+        # import pdb; pdb.set_trace()
         rt, re, rm, summary = idx_data
 
         # For Encoding
@@ -308,9 +309,10 @@ def evaluate(encoder, decoder, valid_set, lang,
                                                          encoder, decoder, lang,
                                                          embedding_size)
 
-        for word in decoded_words:
-            print(word, end=' ')
-        print('')
+        res = ' '.join(decoded_words[:-1])
+        if verbose:
+            print(res)
+        yield decoded_words[:-1]
 
 
 def showconfig():

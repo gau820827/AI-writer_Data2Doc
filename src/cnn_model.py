@@ -57,10 +57,6 @@ class Conv_relation_extractor(nn.Module):
         num_pos_embed = self.embed_numpos(num_pos)
         x = torch.cat( (word_embed, ent_pos_embed, num_pos_embed), 2)
         x = x.unsqueeze(1)
-        # conv_results = [
-        #     F.max_pool1d(F.relu(self.convs[i](x)), self.max_len - self.kernel_sizes[i] + 1)
-        #         .view(-1, self.kernel_sizes[i])
-        #     for i in range(len(self.kernel_sizes))]
         x = [F.relu(conv(x)).squeeze(3) for conv in self.convs] #[(N,Co,W), ...]*len(Ks)
         x = [F.max_pool1d(i, i.size(2)).squeeze(2) for i in x] #[(N,Co), ...]*len(Ks)
         x = torch.cat(x, 1)

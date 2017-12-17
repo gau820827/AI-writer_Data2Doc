@@ -112,10 +112,12 @@ if __name__ == "__main__":
     config.read(args.config)
     #this is not elegant always load the training data to build a model
     training_data = Prepare_data(args.input_path)
-    
+
     model = Conv_relation_extractor(config, training_data.get_size_info())
     if not args.validate:
         train(model, training_data)
+        val_data = Prepare_data(args.input_path, datatype='val')
+        evaluate(model, val_data)
     else:
         state_dict = torch.load(args.validate, map_location=lambda storage, loc: storage)
         model.load_state_dict(state_dict)
