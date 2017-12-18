@@ -5,7 +5,6 @@ require 'cunn'
 require 'cudnn'
 --require 'nngraph'
 -- require 'MarginalNLLCriterion'
-require 'MultiLabelMarginCriterion'
 local stringx = require('pl.stringx')
 
 local cmd = torch.CmdLine()
