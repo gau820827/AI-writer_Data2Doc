@@ -285,6 +285,9 @@ def evaluate(encoder, decoder, valid_set, lang,
     """The evaluate procedure."""
     # Get evaluate data
     valid_iter = data_iter(valid_set, batch_size=1, shuffle=False)
+    if use_cuda:
+        encoder.cuda()
+        decoder.cuda()
 
     for iteration in range(iter_time):
 
@@ -312,7 +315,7 @@ def evaluate(encoder, decoder, valid_set, lang,
         res = ' '.join(decoded_words[:-1])
         if verbose:
             print(res)
-        yield decoded_words[:-1]
+        yield res
 
 
 def showconfig():

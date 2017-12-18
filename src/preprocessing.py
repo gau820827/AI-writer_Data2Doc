@@ -61,6 +61,8 @@ def doc2vec(doc):
                 new_triplets = [('name', k, v)]
             elif 'city' in k:
                 new_triplets = [('city', k, v)]
+            else:
+                continue
             triplets += new_triplets
 
     return triplets
