@@ -44,9 +44,9 @@ def generate_text(model, data_file, output):
                             train_lang['summary'], embedding_size,
                             iter_time = data_length , verbose=False)
     print('The text generation begin\n', flush=True)
-    with open('ALL_RNN_encoder_mini.text', 'w') as f:
-        for line in text_generator:
-            print('Summery generated')
+    with open(output, 'w') as f:
+        for idx, line in enumerate(text_generator):
+            print('Summery generated, No{}'.format(idx + 1))
             f.write(line + '\n')
 
 

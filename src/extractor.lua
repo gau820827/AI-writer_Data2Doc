@@ -4,8 +4,8 @@ require 'cutorch'
 require 'cunn'
 require 'cudnn'
 --require 'nngraph'
-require 'MarginalNLLCriterion'
-
+-- require 'MarginalNLLCriterion'
+require 'MultiLabelMarginCriterion'
 local stringx = require('pl.stringx')
 
 local cmd = torch.CmdLine()
@@ -584,7 +584,7 @@ function main()
     else
         model = make_conv_model(V_sizes, emb_sizes, nlabels, opt):cuda()
     end
-    local crit = nn.MarginalNLLCriterion():cuda()
+    local crit = nn.MultiLabelMarginCriterion():cuda()
     local params, grads = model:getParameters()
 
     if opt.uniform_init > 0 then
