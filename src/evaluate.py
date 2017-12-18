@@ -18,17 +18,17 @@ langs = train_lang
 emb = docEmbedding(langs['rt'].n_words, langs['re'].n_words,
                    langs['rm'].n_words, embedding_size)
 emb.init_weights()
-# encoder = EncoderRNN(embedding_size, emb)
-# # encoder = EncoderLIN(embedding_size, emb)
-# decoder = AttnDecoderRNN(embedding_size, langs['summary'].n_words)
+encoder = EncoderLIN(embedding_size, emb)
 
 def generate_text(model, data_file, output):
     encoder_src = model['encoder_path']
     decoder_src = model['decoder_path']
     # encoder_src = model[0]
     # decoder_src = model[1]
-    encoder = EncoderRNN(embedding_size, emb)
-    # encoder = EncoderLIN(embedding_size, emb)
+    if 'LIN' not in encoder_src:
+        encoder = EncoderRNN(embedding_size, emb)
+    else:
+        encoder = EncoderLIN(embedding_size, emb)
     decoder = AttnDecoderRNN(embedding_size, langs['summary'].n_words)
     encoder = load_model(encoder, encoder_src)
     decoder = load_model(decoder, decoder_src)
