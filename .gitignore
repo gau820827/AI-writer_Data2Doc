@@ -46,6 +46,11 @@ coverage.xml
 *.cover
 .hypothesis/
 
+# model and result
+*.txt
+*.h5
+*.t7
+
 # Translations
 *.mo
 *.pot
