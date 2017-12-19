@@ -49,6 +49,7 @@ class Conv_relation_extractor(nn.Module):
         self.dropout = nn.Dropout(dropput)
         self.linear1 = nn.Linear(len(self.kernel_sizes) * filter_num, free_layer_size)
         self.linear2 = nn.Linear(free_layer_size, output_size)
+        self.softmax = nn.Softmax(1)
 
     def forward(self, sent, ent_pos, num_pos):
         # import pdb; pdb.set_trace()
@@ -65,5 +66,5 @@ class Conv_relation_extractor(nn.Module):
         x = F.relu(x)
         x = self.dropout(x)
         x = self.linear2(x)
-        # x = nn.Softmax(x)
+        x = self.softmax(x)
         return x
