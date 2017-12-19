@@ -61,7 +61,7 @@ if __name__ == "__main__":
     for section in config.sections():
         if 'evaluate' not in section:
             continue
-        model , data_file= {}, {}
+        model, data_file = {}, {}
         model['encoder_path']  = config.get(section, 'encoder_path')
         model['decoder_path']  = config.get(section, 'decoder_path')
         data_file['data_dir']  = config.get(section, 'data_dir')

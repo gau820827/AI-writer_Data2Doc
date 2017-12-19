@@ -1,7 +1,11 @@
 """Some useful utilizations. Borrowed from Pytorch Tutorial."""
 import time
 import math
+
 import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+
 import torch
 
 
@@ -34,3 +38,21 @@ def load_model(model, model_src, mode='eval'):
         model.train()
 
     return model
+
+
+def showAttention(inputs, outputs, attentions):
+    # Set up figure with colorbar
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    cax = ax.matshow(attentions.numpy(), cmap='bone')
+    fig.colorbar(cax)
+
+    score = attentions.numpy()
+    for i, text in enumerate(outputs):
+        max_score = ['N\A', 0]
+        for j, triplet in enumerate(inputs):
+            if score[i, j] > max_score[1]:
+                max_score = [triplet, score[i, j]]
+        print('{} <-> {} = {}'.format(text, max_score[0], max_score[1]))
+        if text == '.':
+            print('')
