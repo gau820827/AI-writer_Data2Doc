@@ -274,15 +274,19 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size):
 
 
 def evaluate(encoder, decoder, valid_set, lang,
-             embedding_size, iter_time=1, showAtten=False):
+             embedding_size, iter_time=10, verbose=True):
     """The evaluate procedure."""
-    valid_len = len(valid_set)
-    valid_iter = data_iter(valid_set, batch_size=1)
+    # Get evaluate data
+    valid_iter = data_iter(valid_set, batch_size=1, shuffle=False)
+    if use_cuda:
+        encoder.cuda()
+        decoder.cuda()
 
     for iteration in range(iter_time):
 
         # Get data
         data, idx_data = get_batch(next(valid_iter))
+        # import pdb; pdb.set_trace()
         rt, re, rm, summary = idx_data
 
         # For Encoding
@@ -301,10 +305,10 @@ def evaluate(encoder, decoder, valid_set, lang,
                                                          encoder, decoder, lang,
                                                          embedding_size)
 
-        # Show the result
-        for word in decoded_words:
-            print(word, end=' ')
-        print('')
+        res = ' '.join(decoded_words[:-1])
+        if verbose:
+            print(res)
+        yield res
 
         # Compare to the origin data
         triplets, gold_summary = data[0]

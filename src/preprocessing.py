@@ -61,6 +61,8 @@ def doc2vec(doc):
                 new_triplets = [('name', k, v)]
             elif 'city' in k:
                 new_triplets = [('city', k, v)]
+            else:
+                continue
             triplets += new_triplets
 
     return triplets
@@ -87,7 +89,7 @@ def readfile(filename):
     return result
 
 
-def data_iter(source, batch_size=32):
+def data_iter(source, batch_size=32, shuffle=True):
     """The iterator to give batch data while training.
 
     Args:
@@ -102,13 +104,15 @@ def data_iter(source, batch_size=32):
     dataset_size = len(source)
     start = -1 * batch_size
     order = list(range(dataset_size))
-    random.shuffle(order)
+    if shuffle:
+        random.shuffle(order)
 
     while True:
         start += batch_size
         if start > dataset_size - batch_size:
             start = 0   # Start another epoch.
-            random.shuffle(order)
+            if shuffle:
+                random.shuffle(order)
         batch_indices = order[start:start + batch_size]
         batch = [source[index] for index in batch_indices]
         yield batch
