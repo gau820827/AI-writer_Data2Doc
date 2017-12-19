@@ -10,8 +10,9 @@ import torch.nn.functional as F
 
 from preprocessing import data_iter
 from dataprepare import loaddata, data2index
-from model import EncoderLIN, EncoderRNN, AttnDecoderRNN, docEmbedding
-from util import gettime, load_model
+from model import EncoderLIN, EncoderRNN, EncoderBiLSTM
+from model import AttnDecoderRNN, docEmbedding
+from util import gettime, load_model, showAttention
 
 from settings import file_loc, use_cuda, MAX_LENGTH, USE_MODEL
 from settings import EMBEDDING_SIZE, LR, ITER_TIME, BATCH_SIZE
@@ -78,46 +79,35 @@ def sentenceloss(rt, re, rm, summary, encoder, decoder,
     loss = 0
 
     # Encoding
-    encoder_hidden = encoder.initHidden(batch_length)
-    for ei in range(input_length):
-        encoder_hidden = encoder(rt[:, ei], re[:, ei], rm[:, ei], encoder_hidden)
+    if ENCODER_STYLE == 'BiLSTM':
+        init_hidden = encoder.initHidden(batch_length)
+        encoder_hidden, encoder_hiddens = encoder(rt, re, rm, init_hidden)
 
         # Store memory information
-        encoder_outputs[:, ei] = encoder_hidden
+        for ei in range(input_length):
+            encoder_outputs[:, ei] = encoder_hiddens[:, ei]
+
+    else:
+        encoder_hidden = encoder.initHidden(batch_length)
+        for ei in range(input_length):
+            encoder_hidden = encoder(rt[:, ei], re[:, ei], rm[:, ei], encoder_hidden)
+
+            # Store memory information
+            encoder_outputs[:, ei] = encoder_hidden
 
     decoder_hidden = encoder_hidden
 
     decoder_input = Variable(torch.LongTensor(batch_length).zero_())
     decoder_input = decoder_input.cuda() if use_cuda else decoder_input
 
-    teacher_forcing_ratio = 1.0
-    use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
+    # Feed the target as the next input
+    for di in range(target_length):
+        decoder_output, decoder_hidden, decoder_attention = decoder(
+            decoder_input, decoder_hidden, encoder_hidden,
+            encoder_outputs)
 
-    if use_teacher_forcing:
-        # Teacher forcing: Feed the target as the next input
-        for di in range(target_length):
-            decoder_output, decoder_hidden, decoder_attention = decoder(
-                decoder_input, decoder_hidden, encoder_hidden,
-                encoder_outputs)
-
-            loss += criterion(decoder_output, summary[:, di])
-            decoder_input = summary[:, di]  # Teacher forcing
-
-    else:
-        # Without teacher forcing: use its own predictions as the next input
-        for di in range(target_length):
-            decoder_output, decoder_hidden, decoder_attention = decoder(
-                decoder_input, decoder_hidden, encoder_hidden,
-                encoder_outputs)
-
-            topv, topi = decoder_output.data.topk(1)
-
-            decoder_input = Variable(topi.squeeze(1))
-            decoder_input = decoder_input.cuda() if use_cuda else decoder_input
-
-            loss += criterion(decoder_output, summary[:, di])
-            # if ni == '<EOS>':
-            #    break
+        loss += criterion(decoder_output, summary[:, di])
+        decoder_input = summary[:, di]  # Supervised
 
     loss.backward()
 
@@ -158,6 +148,8 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
 
     if encoder_style == 'LIN':
         encoder = EncoderLIN(embedding_size, emb)
+    elif encoder_style == 'BiLSTM':
+        encoder = EncoderBiLSTM(embedding_size, emb)
     else:
         encoder = EncoderRNN(embedding_size, emb)
 
@@ -235,7 +227,8 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size):
     """
     batch_length = rt.size()[0]
     input_length = rt.size()[1]
-    target_length = summary.size()[1]
+    # target_length = summary.size()[1]
+    target_length = 1000
 
     encoder_outputs = Variable(torch.zeros(batch_length, MAX_LENGTH, embedding_size))
     encoder_outputs = encoder_outputs.cuda() if use_cuda else encoder_outputs
@@ -281,9 +274,9 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size):
 
 
 def evaluate(encoder, decoder, valid_set, lang,
-             embedding_size, iter_time=10):
+             embedding_size, iter_time=1, showAtten=False):
     """The evaluate procedure."""
-    # Get evaluate data
+    valid_len = len(valid_set)
     valid_iter = data_iter(valid_set, batch_size=1)
 
     for iteration in range(iter_time):
@@ -308,9 +301,19 @@ def evaluate(encoder, decoder, valid_set, lang,
                                                          encoder, decoder, lang,
                                                          embedding_size)
 
+        # Show the result
         for word in decoded_words:
             print(word, end=' ')
         print('')
+
+        # Compare to the origin data
+        triplets, gold_summary = data[0]
+        for word in gold_summary:
+            print(word, end=' ')
+        print(' ')
+
+        if showAtten is True:
+            showAttention(triplets, decoded_words, decoder_attentions)
 
 
 def showconfig():
