@@ -13,6 +13,7 @@ from dataprepare import loaddata, data2index
 from model import EncoderLIN, EncoderRNN, EncoderBiLSTM
 from model import AttnDecoderRNN, docEmbedding
 from util import gettime, load_model, showAttention
+from util import PriorityQueue
 
 from settings import file_loc, use_cuda, MAX_LENGTH, USE_MODEL
 from settings import EMBEDDING_SIZE, LR, ITER_TIME, BATCH_SIZE
@@ -103,8 +104,7 @@ def sentenceloss(rt, re, rm, summary, encoder, decoder,
     # Feed the target as the next input
     for di in range(target_length):
         decoder_output, decoder_hidden, decoder_attention = decoder(
-            decoder_input, decoder_hidden, encoder_hidden,
-            encoder_outputs)
+            decoder_input, decoder_hidden, encoder_outputs)
 
         loss += criterion(decoder_output, summary[:, di])
         decoder_input = summary[:, di]  # Supervised
@@ -216,7 +216,8 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
     return encoder, decoder
 
 
-def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size):
+def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
+                 beamsize=5):
     """The function will predict the sentecnes given boxscore.
 
     Encode the given box score, decode it to sentences, and then
@@ -236,41 +237,74 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size):
     encoder_hidden = encoder.initHidden(batch_length)
 
     # Encoding
-    for ei in range(input_length):
-        encoder_hidden = encoder(rt[:, ei], re[:, ei], rm[:, ei], encoder_hidden)
+    if ENCODER_STYLE == 'BiLSTM':
+        init_hidden = encoder.initHidden(batch_length)
+        encoder_hidden, encoder_hiddens = encoder(rt, re, rm, init_hidden)
 
         # Store memory information
-        encoder_outputs[:, ei] = encoder_hidden
+        for ei in range(input_length):
+            encoder_outputs[:, ei] = encoder_hiddens[:, ei]
 
-    decoder_hidden = encoder_hidden
+    else:
+        encoder_hidden = encoder.initHidden(batch_length)
+        for ei in range(input_length):
+            encoder_hidden = encoder(rt[:, ei], re[:, ei], rm[:, ei], encoder_hidden)
 
-    decoder_input = Variable(torch.LongTensor(batch_length).zero_())
-    decoder_input = decoder_input.cuda() if use_cuda else decoder_input
-    decoder_hidden = encoder_hidden
+            # Store memory information
+            encoder_outputs[:, ei] = encoder_hidden
 
-    decoded_words = []
     decoder_attentions = torch.zeros(target_length, MAX_LENGTH)
 
+    # Initialize the Beam
+    beam = [[0, [0], encoder_hidden, decoder_attentions]]
+
+    # For each step
     for di in range(target_length):
-        decoder_output, decoder_hidden, decoder_attention = decoder(
-            decoder_input, decoder_hidden, encoder_hidden, encoder_outputs)
 
-        # Get the attention vector at each prediction
-        decoder_attentions[di] = decoder_attention.data[0][0]
+        # For each information in the beam
+        q = PriorityQueue()
+        for b in beam:
 
-        # decode the word
-        topv, topi = decoder_output.data.topk(1)
-        ni = topi[0][0]
-        if ni == 1:
-            decoded_words.append('<EOS>')
+            prob, route, decoder_hidden, atten = b
+            destination = len(route) - 1
+
+            # Get the lastest predecition
+            decoder_input = route[-1]
+
+            # If <EOS>, do not search for it
+            if decoder_input == 1:
+                q.push(b, prob)
+                continue
+
+            decoder_input = Variable(torch.LongTensor([decoder_input]))
+            decoder_input = decoder_input.cuda() if use_cuda else decoder_input
+
+            decoder_output, decoder_hidden, decoder_attention = decoder(
+                decoder_input, decoder_hidden, encoder_outputs)
+
+            # Get the attention vector at each prediction
+            atten[destination] = decoder_attention.data[0][0]
+
+            # decode the word
+            topv, topi = decoder_output.data.topk(beamsize)
+
+            for i in range(beamsize):
+                p = topv[0][i]
+                idp = topi[0][i]
+                new_beam = [prob + p, route + [idp], decoder_hidden, atten]
+                q.push(new_beam, new_beam[0])
+
+        # Keep the highest K probability
+        beam = [q.pop() for i in range(beamsize)]
+
+        # If the highest one is finished, we take that.
+        if beam[0][1][-1] == 1:
             break
-        else:
-            decoded_words.append(lang.index2word[ni])
 
-        decoder_input = Variable(topi.squeeze(1))
-        decoder_input = decoder_input.cuda() if use_cuda else decoder_input
-
-    return decoded_words, decoder_attentions[:di + 1]
+    # Get decoded_words and decoder_attetntions
+    decoded_words = [lang.index2word[w] for w in beam[0][1][1:]]
+    decoder_attentions = beam[0][2]
+    return decoded_words, decoder_attentions[:len(decoded_words)]
 
 
 def evaluate(encoder, decoder, valid_set, lang,

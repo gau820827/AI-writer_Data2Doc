@@ -1,6 +1,7 @@
 """Some useful utilizations. Borrowed from Pytorch Tutorial."""
 import time
 import math
+import heapq
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -56,3 +57,16 @@ def showAttention(inputs, outputs, attentions):
         print('{} <-> {} = {}'.format(text, max_score[0], max_score[1]))
         if text == '.':
             print('')
+
+
+class PriorityQueue:
+    def __init__(self):
+        self._queue = []
+        self._index = 0
+
+    def push(self, item, priority):
+        heapq.heappush(self._queue, (-priority, self._index, item))
+        self._index += 1
+
+    def pop(self):
+        return heapq.heappop(self._queue)[-1]
