@@ -2,7 +2,7 @@
 import torch
 from dataprepare import loaddata, data2index
 from train import evaluate
-from model import AttnDecoderRNN, EncoderRNN, EncoderLIN, docEmbedding
+from model import AttnDecoderRNN, EncoderBiLSTM, EncoderRNN, EncoderLIN, docEmbedding
 from settings import file_loc
 from util import load_model
 
@@ -27,7 +27,9 @@ def generate_text(model, data_file, output):
     decoder_src = model['decoder_path']
     # encoder_src = model[0]
     # decoder_src = model[1]
-    if 'LIN' not in encoder_src:
+    if 'LSTM' in encoder_src:
+        encoder = EncoderBiLSTM(embedding_size, emb)
+    elif 'LIN' not in encoder_src:
         encoder = EncoderRNN(embedding_size, emb)
     else:
         encoder = EncoderLIN(embedding_size, emb)
