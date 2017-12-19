@@ -320,7 +320,6 @@ def evaluate(encoder, decoder, valid_set, lang,
 
         # Get data
         data, idx_data = get_batch(next(valid_iter))
-        # import pdb; pdb.set_trace()
         rt, re, rm, summary = idx_data
 
         # For Encoding
