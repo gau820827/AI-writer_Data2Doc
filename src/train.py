@@ -235,7 +235,8 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size):
     """
     batch_length = rt.size()[0]
     input_length = rt.size()[1]
-    target_length = summary.size()[1]
+    target_length = 1000
+    # garget_length = summary.size()[1]
 
     encoder_outputs = Variable(torch.zeros(batch_length, MAX_LENGTH, embedding_size))
     encoder_outputs = encoder_outputs.cuda() if use_cuda else encoder_outputs
@@ -293,7 +294,6 @@ def evaluate(encoder, decoder, valid_set, lang,
 
         # Get data
         data, idx_data = get_batch(next(valid_iter))
-        # import pdb; pdb.set_trace()
         rt, re, rm, summary = idx_data
 
         # For Encoding
@@ -306,7 +306,7 @@ def evaluate(encoder, decoder, valid_set, lang,
 
         if use_cuda:
             rt, re, rm, summary = rt.cuda(), re.cuda(), rm.cuda(), summary.cuda()
-
+            
         # Get decoding words and attention matrix
         decoded_words, decoder_attentions = predictwords(rt, re, rm, summary,
                                                          encoder, decoder, lang,
