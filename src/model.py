@@ -34,8 +34,6 @@ class docEmbedding(nn.Module):
         emb_re = self.embedding2(re)
         emb_rm = self.embedding3(rm)
 
-        print(rt.size())
-        print(len(rt.size()))
         emb_all = torch.cat([emb_rt, emb_re, emb_rm], dim=len(rt.size()))
         output = self.linear(emb_all)
         output = F.relu(output)
