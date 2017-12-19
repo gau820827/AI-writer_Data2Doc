@@ -34,7 +34,7 @@ class docEmbedding(nn.Module):
         emb_re = self.embedding2(re)
         emb_rm = self.embedding3(rm)
 
-        emb_all = torch.cat([emb_rt, emb_re, emb_rm], dim=1)
+        emb_all = torch.cat([emb_rt, emb_re, emb_rm], dim=len(rt.size()))
         output = self.linear(emb_all)
         output = F.relu(output)
         return output
@@ -80,6 +80,7 @@ class EncoderLIN(nn.Module):
 
 
 class EncoderRNN(nn.Module):
+    """Vanilla encoder using pure gru."""
     def __init__(self, hidden_size, embedding_layer, n_layers=LAYER_DEPTH):
         super(EncoderRNN, self).__init__()
         self.n_layers = n_layers
@@ -103,6 +104,37 @@ class EncoderRNN(nn.Module):
             return result.cuda()
         else:
             return result
+
+
+class EncoderBiLSTM(nn.Module):
+    """Vanilla encoder using pure LSTM."""
+    def __init__(self, hidden_size, embedding_layer, n_layers=LAYER_DEPTH):
+        super(EncoderBiLSTM, self).__init__()
+        self.n_layers = n_layers
+        self.hidden_size = hidden_size
+
+        self.embedding = embedding_layer
+        self.bilstm = nn.LSTM(hidden_size, hidden_size // 2, num_layers=n_layers, bidirectional=True)
+
+    def forward(self, rt, re, rm, hidden):
+        embedded = self.embedding(rt, re, rm)
+        embedded = torch.transpose(embedded, 0, 1)
+        bilstm_outs, self.hidden = self.bilstm(embedded, hidden)
+
+        output = torch.transpose(bilstm_outs, 0, 1)
+        output = torch.transpose(output, 1, 2)
+        output = F.tanh(output)
+        output = F.max_pool1d(output, output.size(2)).squeeze(2)
+
+        return output, torch.transpose(bilstm_outs, 0, 1)
+
+    def initHidden(self, batch_size):
+        forward = Variable(torch.zeros(2 * self.n_layers, batch_size, self.hidden_size // 2))
+        backward = Variable(torch.zeros(2 * self.n_layers, batch_size, self.hidden_size // 2))
+        if use_cuda:
+            return (forward.cuda(), backward.cuda())
+        else:
+            return (forward, backward)
 
 
 class AttnDecoderRNN(nn.Module):

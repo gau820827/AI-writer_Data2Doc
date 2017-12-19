@@ -5,19 +5,21 @@ from train import evaluate
 from model import AttnDecoderRNN, EncoderRNN, EncoderLIN, docEmbedding
 from settings import file_loc
 from util import load_model
+
 import json
 import sys, os, configparser
 import argparse
 
 config = configparser.ConfigParser()
 
-
 train_data, train_lang = loaddata(file_loc, 'train')
+
 embedding_size = 600
 langs = train_lang
 emb = docEmbedding(langs['rt'].n_words, langs['re'].n_words,
                    langs['rm'].n_words, embedding_size)
 emb.init_weights()
+
 encoder = EncoderLIN(embedding_size, emb)
 
 def generate_text(model, data_file, output):
@@ -41,16 +43,13 @@ def generate_text(model, data_file, output):
     data_length = len(valid_data)
     valid_data = data2index(valid_data, train_lang)
     text_generator = evaluate(encoder, decoder, valid_data,
-                            train_lang['summary'], embedding_size,
-                            iter_time = data_length , verbose=False)
+                              train_lang['summary'], embedding_size,
+                              iter_time=data_length, verbose=False)
     print('The text generation begin\n', flush=True)
     with open(output, 'w') as f:
         for idx, line in enumerate(text_generator):
             print('Summery generated, No{}'.format(idx + 1))
             f.write(line + '\n')
-
-
-
 
 
 if __name__ == "__main__":
@@ -62,7 +61,7 @@ if __name__ == "__main__":
     for section in config.sections():
         if 'evaluate' not in section:
             continue
-        model , data_file= {}, {}
+        model, data_file = {}, {}
         model['encoder_path']  = config.get(section, 'encoder_path')
         model['decoder_path']  = config.get(section, 'decoder_path')
         data_file['data_dir']  = config.get(section, 'data_dir')
