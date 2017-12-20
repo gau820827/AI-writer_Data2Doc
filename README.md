@@ -25,3 +25,8 @@ The three files:
 * cnn_model.py -- definition of CNN relation classifier
 * data_prepare.py -- data cleaning and preparaion
 * train_cnn.py -- training process of CNN relation classifier
+
+## contribution
+Yi-Hsing Kao mainly worked on the data2text generation and Huri Ma mainly worked on the evaluation process.
+
+## Thanks to the dataset and code from Wiseman et. al.
