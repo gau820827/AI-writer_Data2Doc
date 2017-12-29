@@ -1,12 +1,10 @@
 """This is core training part, containing different models."""
-import random
 import time
 
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
 from torch import optim
-import torch.nn.functional as F
 
 from preprocessing import data_iter
 from dataprepare import loaddata, data2index
@@ -20,7 +18,10 @@ from settings import EMBEDDING_SIZE, LR, ITER_TIME, BATCH_SIZE
 from settings import MAX_SENTENCES, ENCODER_STYLE
 from settings import GET_LOSS, SAVE_MODEL, OUTPUT_FILE
 
-# TODO: 2. Extend the model
+SOS_TOKEN = 0
+EOS_TOKEN = 1
+
+# TODO: Extend the model to copy-based model
 
 
 def get_batch(batch):
@@ -163,11 +164,9 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         encoder = load_model(encoder, use_model[0])
         decoder = load_model(decoder, use_model[1])
 
-    # Different choice of optimizer
+    # Choose optimizer
     encoder_optimizer = optim.Adagrad(encoder.parameters(), lr=learning_rate, lr_decay=0, weight_decay=0)
     decoder_optimizer = optim.Adagrad(decoder.parameters(), lr=learning_rate, lr_decay=0, weight_decay=0)
-    # encoder_optimizer = optim.SGD(encoder.parameters(), lr=learning_rate)
-    # decoder_optimizer = optim.SGD(decoder.parameters(), lr=learning_rate)
 
     criterion = nn.NLLLoss()
 
@@ -217,18 +216,17 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
 
 
 def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
-                 beamsize=5):
+                 beam_size=1):
     """The function will predict the sentecnes given boxscore.
 
     Encode the given box score, decode it to sentences, and then
     return the prediction and attention matrix.
 
-    Right now, the prediction length is limited to target length.
+    While decoding, beam search will be conducted with default beam_size as 1.
 
     """
     batch_length = rt.size()[0]
     input_length = rt.size()[1]
-    # target_length = summary.size()[1]
     target_length = 1000
 
     encoder_outputs = Variable(torch.zeros(batch_length, MAX_LENGTH, embedding_size))
@@ -256,24 +254,25 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
     decoder_attentions = torch.zeros(target_length, MAX_LENGTH)
 
     # Initialize the Beam
-    beam = [[0, [0], encoder_hidden, decoder_attentions]]
+    # Each Beam cell contains [prob, route, decoder_hidden, atten]
+    beams = [[0, [SOS_TOKEN], encoder_hidden, decoder_attentions]]
 
     # For each step
     for di in range(target_length):
 
         # For each information in the beam
         q = PriorityQueue()
-        for b in beam:
+        for beam in beams:
 
-            prob, route, decoder_hidden, atten = b
+            prob, route, decoder_hidden, atten = beam
             destination = len(route) - 1
 
             # Get the lastest predecition
             decoder_input = route[-1]
 
             # If <EOS>, do not search for it
-            if decoder_input == 1:
-                q.push(b, prob)
+            if decoder_input == EOS_TOKEN:
+                q.push(beam, prob)
                 continue
 
             decoder_input = Variable(torch.LongTensor([decoder_input]))
@@ -286,24 +285,24 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
             atten[destination] = decoder_attention.data[0][0]
 
             # decode the word
-            topv, topi = decoder_output.data.topk(beamsize)
+            topv, topi = decoder_output.data.topk(beam_size)
 
-            for i in range(beamsize):
+            for i in range(beam_size):
                 p = topv[0][i]
                 idp = topi[0][i]
                 new_beam = [prob + p, route + [idp], decoder_hidden, atten]
                 q.push(new_beam, new_beam[0])
 
         # Keep the highest K probability
-        beam = [q.pop() for i in range(beamsize)]
+        beams = [q.pop() for i in range(beam_size)]
 
         # If the highest one is finished, we take that.
-        if beam[0][1][-1] == 1:
+        if beams[0][1][-1] == 1:
             break
 
     # Get decoded_words and decoder_attetntions
-    decoded_words = [lang.index2word[w] for w in beam[0][1][1:]]
-    decoder_attentions = beam[0][2]
+    decoded_words = [lang.index2word[w] for w in beams[0][1][1:]]
+    decoder_attentions = beams[0][3]
     return decoded_words, decoder_attentions[:len(decoded_words)]
 
 
@@ -311,7 +310,7 @@ def evaluate(encoder, decoder, valid_set, lang,
              embedding_size, iter_time=10, verbose=True):
     """The evaluate procedure."""
     # Get evaluate data
-    valid_iter = data_iter(valid_set, batch_size=1, shuffle=False)
+    valid_iter = data_iter(valid_set, batch_size=1, shuffle=True)
     if use_cuda:
         encoder.cuda()
         decoder.cuda()
@@ -343,9 +342,10 @@ def evaluate(encoder, decoder, valid_set, lang,
             print(res)
         yield res
 
-        # FOR WRITING REPORTS ONLY
+        # # FOR WRITING REPORTS ONLY
         # # Compare to the origin data
         # triplets, gold_summary = data[0]
+
         # for word in gold_summary:
         #     print(word, end=' ')
         # print(' ')

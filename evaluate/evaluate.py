@@ -22,6 +22,7 @@ emb.init_weights()
 
 encoder = EncoderLIN(embedding_size, emb)
 
+
 def generate_text(model, data_file, output):
     encoder_src = model['encoder_path']
     decoder_src = model['decoder_path']
@@ -70,15 +71,3 @@ if __name__ == "__main__":
         print("{} has started\n".format(section), flush=True)
         generate_text(model, data_file, output)
         print("{} has been done\n".format(section), flush=True)
-# for idx, summary in enumerate(text_generator):
-    # valuation_data[idx]['summary'] = summary
-    # gold_summary = valuation_data[idx]['summary']
-    # print('generated summary: \n')
-    # print(' '.join(summary))
-    # print('Gold summary: \n')
-    # print(' '.join(gold_summary))
-    # break
-# to_test = json.dump(valuation_data)
-
-# with open('to_test.json', 'w') as f:
-    # f.write(to_test)
