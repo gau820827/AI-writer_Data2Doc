@@ -216,7 +216,7 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
 
 
 def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
-                 beam_size=1):
+                 encoder_style, beam_size):
     """The function will predict the sentecnes given boxscore.
 
     Encode the given box score, decode it to sentences, and then
@@ -235,7 +235,7 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
     encoder_hidden = encoder.initHidden(batch_length)
 
     # Encoding
-    if ENCODER_STYLE == 'BiLSTM':
+    if encoder_style == 'BiLSTM':
         init_hidden = encoder.initHidden(batch_length)
         encoder_hidden, encoder_hiddens = encoder(rt, re, rm, init_hidden)
 
@@ -307,7 +307,8 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
 
 
 def evaluate(encoder, decoder, valid_set, lang,
-             embedding_size, iter_time=10, verbose=True):
+             embedding_size, encoder_style=ENCODER_STYLE, iter_time=10,
+             beam_size=1, verbose=True):
     """The evaluate procedure."""
     # Get evaluate data
     valid_iter = data_iter(valid_set, batch_size=1, shuffle=True)
@@ -335,7 +336,8 @@ def evaluate(encoder, decoder, valid_set, lang,
         # Get decoding words and attention matrix
         decoded_words, decoder_attentions = predictwords(rt, re, rm, summary,
                                                          encoder, decoder, lang,
-                                                         embedding_size)
+                                                         embedding_size, encoder_style,
+                                                         beam_size)
 
         res = ' '.join(decoded_words[:-1])
         if verbose:

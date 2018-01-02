@@ -3,10 +3,6 @@ import time
 import math
 import heapq
 
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
-
 import torch
 
 
@@ -42,12 +38,14 @@ def load_model(model, model_src, mode='eval'):
 
 
 def showAttention(inputs, outputs, attentions):
-    # Set up figure with colorbar
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-    print(attentions)
-    cax = ax.matshow(attentions.numpy(), cmap='bone')
-    fig.colorbar(cax)
+    """The function to show attention scores.
+
+    Args:
+        inputs: A list of tuples, indicating the input triplets.
+        outputs: A list of strings, indicating the output texts.
+        attentions: A matrix of attention scores.
+
+    """
 
     score = attentions.numpy()
     for i, text in enumerate(outputs):
