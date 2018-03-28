@@ -2,7 +2,7 @@
 from dataprepare import loaddata, data2index
 from train import evaluate
 from model import AttnDecoderRNN, EncoderRNN, EncoderLIN, docEmbedding, EncoderBiLSTM
-from settings import file_loc
+from settings import file_loc, ENCODER_STYLE
 from util import load_model
 
 
@@ -14,15 +14,15 @@ emb = docEmbedding(langs['rt'].n_words, langs['re'].n_words,
                    langs['rm'].n_words, embedding_size)
 emb.init_weights()
 
-encoder_src = '../model/demo/ALL_BiLSTM_encoder_10000'
-decoder_src = '../model/demo/ALL_BiLSTM_decoder_10000'
+encoder_src = './default_encoder_10000'
+decoder_src = './default_decoder_5000'
 
 encoder_style = None
 
-if 'RNN' in encoder_src:
+if 'RNN' == ENCODER_STYLE:
     encoder = EncoderRNN(embedding_size, emb)
     encoder_style = 'RNN'
-elif 'LSTM' in encoder_src:
+elif 'LSTM' == ENCODER_STYLE:
     encoder = EncoderBiLSTM(embedding_size, emb)
     encoder_style = 'BiLSTM'
 else:

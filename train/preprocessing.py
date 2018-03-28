@@ -103,6 +103,7 @@ def data_iter(source, batch_size=32, shuffle=True):
     """
     dataset_size = len(source)
     start = -1 * batch_size
+    # TODO Change to Permute
     order = list(range(dataset_size))
     if shuffle:
         random.shuffle(order)
