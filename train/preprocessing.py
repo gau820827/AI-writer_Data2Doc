@@ -111,9 +111,10 @@ def data_iter(source, batch_size=32, shuffle=True):
     while True:
         start += batch_size
         if start > dataset_size - batch_size:
-            start = 0   # Start another epoch.
-            if shuffle:
-                random.shuffle(order)
+            return
+            #start = 0   # Start another epoch.
+            #if shuffle:
+            #    random.shuffle(order)
         batch_indices = order[start:start + batch_size]
         batch = [source[index] for index in batch_indices]
         yield batch

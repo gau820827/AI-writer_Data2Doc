@@ -11,13 +11,13 @@ USE_MODEL = None
 # Parameter for training
 EMBEDDING_SIZE = 600
 LR = 0.01
-ITER_TIME = 10000
-BATCH_SIZE = 8
+ITER_TIME = 30
+BATCH_SIZE = 26
 
 # Parameter for display
-GET_LOSS = 1
-SAVE_MODEL = 5000
+GET_LOSS = 30
+SAVE_MODEL = 10
 # ENCODER_STYLE = 'BiLSTM'
 ENCODER_STYLE = 'RNN'
-OUTPUT_FILE = 'newLoss'
+OUTPUT_FILE = 'decoupled'
 USE_MODEL = None

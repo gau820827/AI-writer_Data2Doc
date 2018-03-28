@@ -98,7 +98,7 @@ class EncoderRNN(nn.Module):
         return output, hidden
 
     def initHidden(self, batch_size):
-        result = Variable(torch.zeros(self.n_layers, batch_size, self.hidden_size))
+        result = Variable(torch.zeros(self.n_layers, batch_size, self.hidden_size),requires_grad=False)
 
         if use_cuda:            
             return result.cuda()
@@ -173,10 +173,9 @@ class AttnDecoderRNN(nn.Module):
         output = torch.cat((embedded, attn_applied), dim=1)
         output = self.attn_combine(output)
 
-        nh = Variable(torch.zeros(hidden.size())).cuda()
+        nh = Variable(torch.zeros(hidden.size()), requires_grad=False).cuda()
 
         for i in range(self.n_layers):
-            output = F.relu(output)
             layer_fnc = getattr(self, "gru"+str(i))
             output = layer_fnc(output, hidden[i,:,:])
             nh[i,:,:] = output
@@ -185,7 +184,7 @@ class AttnDecoderRNN(nn.Module):
         return output, nh, attn_weights
 
     def initHidden(self, batch_size):
-        result = Variable(torch.zeros(self.n_layers, batch_size, self.hidden_size))
+        result = Variable(torch.zeros(self.n_layers, batch_size, self.hidden_size), requires_grad=False)
         if use_cuda:
             return result.cuda()
         else:

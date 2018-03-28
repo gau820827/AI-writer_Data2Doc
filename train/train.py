@@ -74,7 +74,7 @@ def sentenceloss(rt, re, rm, summary, encoder, decoder,
     input_length = rt.size()[1]
     target_length = summary.size()[1]
 
-    encoder_outputs = Variable(torch.zeros(batch_length, MAX_LENGTH, embedding_size))
+    encoder_outputs = Variable(torch.zeros(batch_length, MAX_LENGTH, embedding_size), requires_grad=False)
     encoder_outputs = encoder_outputs.cuda() if use_cuda else encoder_outputs
 
     loss = 0
@@ -97,7 +97,7 @@ def sentenceloss(rt, re, rm, summary, encoder, decoder,
 
     decoder_hidden = decoder.initHidden(batch_length)
     decoder_hidden[0,:,:] = out[-1,:] # might be zero
-    decoder_input = Variable(torch.LongTensor(batch_length).zero_())
+    decoder_input = Variable(torch.LongTensor(batch_length).zero_(), requires_grad=False)
     decoder_input = decoder_input.cuda() if use_cuda else decoder_input
 
     # Feed the target as the next input
@@ -137,7 +137,6 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
     # Set the timer
     start = time.time()
 
-    train_iter = data_iter(train_set, batch_size=batch_size)
 
     # Initialize the model
     emb = docEmbedding(langs['rt'].n_words, langs['re'].n_words,
@@ -163,52 +162,56 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         decoder = load_model(decoder, use_model[1])
 
     # Choose optimizer
-    loss_optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=learning_rate, weight_decay=0)
+    loss_optimizer = optim.Adagrad(list(encoder.parameters()) + list(decoder.parameters()), lr=learning_rate, lr_decay=0, weight_decay=0)
     #decoder_optimizer = optim.Adagrad(decoder.parameters(), lr=learning_rate, lr_decay=0, weight_decay=0)
 
     criterion = nn.NLLLoss()
 
     total_loss = 0
-
-    for iteration in range(1, iter_time + 1):
-
+    iteration = 0
+    for epo in range(1, iter_time + 1):
+        print("Epoch #%d" % (epo))
         # Get data
-        data, idx_data = get_batch(next(train_iter))
-        rt, re, rm, summary = idx_data
+
+        train_iter = data_iter(train_set, batch_size=batch_size)
+        for dt in train_iter:
+            iteration += 1
+            data, idx_data = get_batch(dt)
+            rt, re, rm, summary = idx_data
         
-        # Add paddings
-        rt = addpaddings(rt)
-        re = addpaddings(re)
-        rm = addpaddings(rm)
-        summary = addpaddings(summary)
+            # Add paddings
+            rt = addpaddings(rt)
+            re = addpaddings(re)
+            rm = addpaddings(rm)
+            summary = addpaddings(summary)
         
-        rt = Variable(torch.LongTensor(rt))
-        re = Variable(torch.LongTensor(re))
-        rm = Variable(torch.LongTensor(rm))
+            rt = Variable(torch.LongTensor(rt), requires_grad=False)
+            re = Variable(torch.LongTensor(re), requires_grad=False)
+            rm = Variable(torch.LongTensor(rm), requires_grad=False)
 
-        # For Decoding
-        summary = Variable(torch.LongTensor(summary))
+            # For Decoding
+            summary = Variable(torch.LongTensor(summary), requires_grad=False)
 
-        if use_cuda:
-            rt, re, rm, summary = rt.cuda(), re.cuda(), rm.cuda(), summary.cuda()
+            if use_cuda:
+                rt, re, rm, summary = rt.cuda(), re.cuda(), rm.cuda(), summary.cuda()
 
-        # Get the average loss on the sentences
-        loss = sentenceloss(rt, re, rm, summary, encoder, decoder,
+            # Get the average loss on the sentences
+            loss = sentenceloss(rt, re, rm, summary, encoder, decoder,
                             loss_optimizer, criterion,
                             embedding_size, encoder_style)
-        total_loss += loss
+            total_loss += loss
 
-        # Print the information and save model
-        if iteration % get_loss == 0:
-            print("Time {}, iter {}, avg loss = {:.4f}".format(
-                gettime(start), iteration, total_loss / get_loss))
-            total_loss = 0
+            # Print the information and save model
+            if iteration % get_loss == 0:
+                print("Time {}, iter {}, avg loss = {:.4f}".format(
+                    gettime(start), iteration, total_loss / get_loss))
+                total_loss = 0
 
-        if iteration % save_model == 0:
+        if epo % save_model == 0:
             torch.save(encoder.state_dict(), "{}_encoder_{}".format(OUTPUT_FILE, iteration))
             torch.save(decoder.state_dict(), "{}_decoder_{}".format(OUTPUT_FILE, iteration))
             print("Save the model at iter {}".format(iteration))
-
+    
     return encoder, decoder
 
 
