@@ -36,7 +36,6 @@ class docEmbedding(nn.Module):
 
         emb_all = torch.cat([emb_rt, emb_re, emb_rm], dim=len(rt.size()))
         output = self.linear(emb_all)
-        output = F.relu(output)
         return output
 
     def init_weights(self):
@@ -87,20 +86,21 @@ class EncoderRNN(nn.Module):
         self.hidden_size = hidden_size
 
         self.embedding = embedding_layer
-        self.gru = nn.GRUCell(hidden_size, hidden_size)
+        self.gru = nn.GRU(hidden_size, hidden_size, num_layers=self.n_layers)
 
     def forward(self, rt, re, rm, hidden):
         embedded = self.embedding(rt, re, rm)
-        output = embedded
+        # embedded is of size (n_batch, seq_len, emb_dim)
+        # gru needs (seq_len, n_batch, emb_dim)
+        inp = embedded.permute(1,0,2)
+        output, hidden = self.gru(inp, hidden)
 
-        for i in range(self.n_layers):
-            output = self.gru(output, hidden)
-
-        return output
+        return output, hidden
 
     def initHidden(self, batch_size):
-        result = Variable(torch.zeros(batch_size, self.hidden_size))
-        if use_cuda:
+        result = Variable(torch.zeros(self.n_layers, batch_size, self.hidden_size))
+
+        if use_cuda:            
             return result.cuda()
         else:
             return result
@@ -150,16 +150,22 @@ class AttnDecoderRNN(nn.Module):
         self.attn = nn.Linear(self.hidden_size * 2, self.max_length)
         self.attn_combine = nn.Linear(self.hidden_size * 2, self.hidden_size)
         self.dropout = nn.Dropout(self.dropout_p)
-        self.gru = nn.GRUCell(self.hidden_size, self.hidden_size)
+        #self.grus = []
+        for i in range(self.n_layers):
+            #self.grus.append(nn.GRUCell(hidden_size, hidden_size))
+            self.add_module("gru"+str(i),nn.GRUCell(hidden_size, hidden_size))
         self.out = nn.Linear(self.hidden_size, self.output_size)
 
     def forward(self, input, hidden, encoder_outputs):
         embedded = self.embedding(input)
         embedded = self.dropout(embedded)
 
+        #inp = embedded.permute(1,0,2)
         attn_weights = F.softmax(
-            self.attn(torch.cat((embedded, hidden), dim=1)))
+            self.attn(torch.cat((embedded, hidden[-1,:,:]), dim=1)))
+        
         attn_weights = attn_weights.unsqueeze(1)
+        attn_weights = attn_weights[:,:,:encoder_outputs.size()[1]]
 
         attn_applied = torch.bmm(attn_weights, encoder_outputs)
         attn_applied = attn_applied.squeeze(1)
@@ -167,16 +173,19 @@ class AttnDecoderRNN(nn.Module):
         output = torch.cat((embedded, attn_applied), dim=1)
         output = self.attn_combine(output)
 
+        nh = Variable(torch.zeros(hidden.size())).cuda()
+
         for i in range(self.n_layers):
             output = F.relu(output)
-            output = self.gru(output, hidden)
+            layer_fnc = getattr(self, "gru"+str(i))
+            output = layer_fnc(output, hidden[i,:,:])
+            nh[i,:,:] = output
 
-        output_hidden = output
         output = F.log_softmax(self.out(output))
-        return output, output_hidden, attn_weights
+        return output, nh, attn_weights
 
     def initHidden(self, batch_size):
-        result = Variable(torch.zeros(batch_size, self.hidden_size))
+        result = Variable(torch.zeros(self.n_layers, batch_size, self.hidden_size))
         if use_cuda:
             return result.cuda()
         else:

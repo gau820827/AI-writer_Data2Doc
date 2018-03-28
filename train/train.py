@@ -42,7 +42,7 @@ def get_batch(batch):
     max_summary_length = 0
     for d in batch:
         idx_data = [[], [], []]  # for each triplet
-        batch_data.append(d[:2])
+        batch_data.append(d[:2]) # keep the original data/ not indexed version
         for triplets in d[2][0]:
             for idt, t in enumerate(triplets):
                 idx_data[idt].append(t)
@@ -59,7 +59,7 @@ def get_batch(batch):
 
 
 def sentenceloss(rt, re, rm, summary, encoder, decoder,
-                 encoder_optimizer, decoder_optimizer,
+                 loss_optimizer,
                  criterion, embedding_size, encoder_style):
     """Function for train on sentences.
 
@@ -68,8 +68,7 @@ def sentenceloss(rt, re, rm, summary, encoder, decoder,
 
     """
     # Zero the gradient
-    encoder_optimizer.zero_grad()
-    decoder_optimizer.zero_grad()
+    loss_optimizer.zero_grad()
 
     batch_length = rt.size()[0]
     input_length = rt.size()[1]
@@ -91,14 +90,13 @@ def sentenceloss(rt, re, rm, summary, encoder, decoder,
 
     else:
         encoder_hidden = encoder.initHidden(batch_length)
-        for ei in range(input_length):
-            encoder_hidden = encoder(rt[:, ei], re[:, ei], rm[:, ei], encoder_hidden)
+        out, encoder_hidden = encoder(rt, re, rm, encoder_hidden)
+        
+        # Store memory information
+        encoder_outputs = out.permute(1,0,2)
 
-            # Store memory information
-            encoder_outputs[:, ei] = encoder_hidden
-
-    decoder_hidden = encoder_hidden
-
+    decoder_hidden = decoder.initHidden(batch_length)
+    decoder_hidden[0,:,:] = out[-1,:] # might be zero
     decoder_input = Variable(torch.LongTensor(batch_length).zero_())
     decoder_input = decoder_input.cuda() if use_cuda else decoder_input
 
@@ -112,8 +110,7 @@ def sentenceloss(rt, re, rm, summary, encoder, decoder,
 
     loss.backward()
 
-    encoder_optimizer.step()
-    decoder_optimizer.step()
+    loss_optimizer.step()
 
     return loss.data[0] / target_length
 
@@ -157,6 +154,7 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
     decoder = AttnDecoderRNN(embedding_size, langs['summary'].n_words)
 
     if use_cuda:
+        emb.cuda()
         encoder.cuda()
         decoder.cuda()
 
@@ -165,8 +163,8 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         decoder = load_model(decoder, use_model[1])
 
     # Choose optimizer
-    encoder_optimizer = optim.Adagrad(encoder.parameters(), lr=learning_rate, lr_decay=0, weight_decay=0)
-    decoder_optimizer = optim.Adagrad(decoder.parameters(), lr=learning_rate, lr_decay=0, weight_decay=0)
+    loss_optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=learning_rate, weight_decay=0)
+    #decoder_optimizer = optim.Adagrad(decoder.parameters(), lr=learning_rate, lr_decay=0, weight_decay=0)
 
     criterion = nn.NLLLoss()
 
@@ -177,14 +175,13 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         # Get data
         data, idx_data = get_batch(next(train_iter))
         rt, re, rm, summary = idx_data
-
+        
         # Add paddings
         rt = addpaddings(rt)
         re = addpaddings(re)
         rm = addpaddings(rm)
         summary = addpaddings(summary)
-
-        # For Encoding
+        
         rt = Variable(torch.LongTensor(rt))
         re = Variable(torch.LongTensor(re))
         rm = Variable(torch.LongTensor(rm))
@@ -197,7 +194,7 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
 
         # Get the average loss on the sentences
         loss = sentenceloss(rt, re, rm, summary, encoder, decoder,
-                            encoder_optimizer, decoder_optimizer, criterion,
+                            loss_optimizer, criterion,
                             embedding_size, encoder_style)
         total_loss += loss
 
