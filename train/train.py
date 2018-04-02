@@ -164,13 +164,12 @@ def add_sentence_paddings(summarizes):
     Returns:
         A list (batch_size) with padding summarizes.
     """
-
     # Add block paddings
     def len_block(summary):
         return summary.count(BLK_TOKEN)
 
     max_blocks_length = max(list(map(len_block, summarizes)))
-    print(list(map(len_block, summarizes)))
+
     for i in range(len(summarizes)):
         summarizes[i] += [BLK_TOKEN for j in range(max_blocks_length - len_block(summarizes[i]))]
 
