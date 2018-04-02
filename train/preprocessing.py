@@ -14,6 +14,47 @@ Ken
 2. aligned player numbers to 26 using PAD
 """
 
+
+def readfile(filename):
+    """The function to prepare data.
+
+    Read the json file into vectors, and then wrap it.
+
+    Args:
+        filename: A string indicates which json file to read.
+
+    Return:
+        A list of the extracted file vectors
+
+    """
+
+    def add_blocks(tokens):
+        """Add start and end symbols for sentences."""
+        summary = []
+        for token in tokens:
+            summary.append(token)
+            if token is '.':
+                summary.append('<BLK>')
+        summary.append('<EOS>')
+        return summary
+
+    result = []
+    with open(filename, 'r') as f:
+        data = json.load(f)
+        for d in data:
+            # # # # # # # # # # # # #
+            # Added by Ken:
+            #   data:  a list of dictionary containing each game information
+            #      [{}, {}, {} ... {}], {box_score, summary, home, ...}
+            #   d: a dictionary of {box_score, summary, ... }
+            #     align all block size in columnwise and rowise direction for each 
+            #     box score
+            d = align_box_score(d)
+            # test_box_score_aligned(d)
+            result.append([doc2vec(d), add_blocks(d['summary'])])
+    return result
+
+
 def doc2vec(doc):
     """The function to extract information to triplets.
 
@@ -22,10 +63,10 @@ def doc2vec(doc):
 
     Args:
         doc: A dict loaded from the json file
-           {'box_score': 
-               { 'AST': { player_number: value, player_number: value .... } 
-                 'BLK': { player_number: value, player_number: value .... } 
-                }  
+           {'box_score':
+               { 'AST': { player_number: value, player_number: value .... }
+                 'BLK': { player_number: value, player_number: value .... }
+                }
             }
     Return:
         triplets: A list contains all triplet vectors extracting from
@@ -38,10 +79,10 @@ def doc2vec(doc):
         """
         Args:
             doc:
-                {'box_score': 
-                   { 'AST': { player_number: value, player_number: value .... } 
-                     'BLK': { player_number: value, player_number: value .... } 
-                    }  
+                {'box_score':
+                   { 'AST': { player_number: value, player_number: value .... }
+                     'BLK': { player_number: value, player_number: value .... }
+                    }
                 }
         Return:
             A list of triplets indication the box score relationship
@@ -94,39 +135,10 @@ def doc2vec(doc):
 
     return triplets
 
-def readfile(filename):
-    """The function to prepare data.
-
-    Read the json file into vectors, and then wrap it into
-
-    Args:
-        filename: A string indicates which json file to read.
-
-    Return:
-        A list of the extracted file vectors
-
-    """
-    result = []
-    roster = 0
-    with open(filename, 'r') as f:
-        data = json.load(f)
-        for d in data:           
-            # # # # # # # # # # # # # 
-            # Added by Ken:
-            #   data:  a list of dictionary containing each game information
-            #      [{}, {}, {} ... {}], {box_score, summary, home, ...}
-            #   d: a dictionary of {box_score, summary, ... }
-            #     align all block size in columnwise and rowise direction for each 
-            #     box score
-            d = align_box_score(d)
-            #test_box_score_aligned(d)
-            d['summary'].append('<EOS>')
-            result.append([doc2vec(d), d['summary']])
-    return result
 
 def test_box_score_aligned(d):
     """
-    Ken: 
+    Ken:
         This is a test function to test if box table all aligns with 30 rows
         (30 players)
     """
@@ -140,6 +152,7 @@ def test_box_score_aligned(d):
             print("Preprocessing Error")
             pprint(d['box_score'][k])
     return
+
 
 def data_iter(source, batch_size=32, shuffle=True):
     """The iterator to give batch data while training.
@@ -179,7 +192,7 @@ def align_box_score(doc):
     #   box2.shape = (players = 23, attributes = MAX_ATTRIBUTE)
     # Given the maximum number of players = 26 (from https://github.com/harvardnlp/boxscore-data)
     # , and the number of attributes is fixed
-    # 
+    #
     # Then for each block (rowise and columnwise), we append END_OF_BLOCK
     # Args:
     #   a dictionary of each game information
@@ -196,8 +209,8 @@ def align_box_score(doc):
     # add new entity (player) if total players less than MAX_PALYERS
     TEAM_SIZE = len(doc['box_score']['PLAYER_NAME'])
     if TEAM_SIZE < MAX_PLAYERS:
-        NULL_ENTITIES = ['<PAD'+str(i)+'>' for i in range(MAX_PLAYERS-TEAM_SIZE)]
-        for i in range(MAX_PLAYERS-TEAM_SIZE):
+        NULL_ENTITIES = ['<PAD' + str(i) + '>' for i in range(MAX_PLAYERS - TEAM_SIZE)]
+        for i in range(MAX_PLAYERS - TEAM_SIZE):
             doc['box_score']['PLAYER_NAME'][NULL_ENTITIES[i]] = NULL_VAL
             doc['box_score']['FIRST_NAME'][NULL_ENTITIES[i]] = NULL_VAL
             doc['box_score']['SECOND_NAME'][NULL_ENTITIES[i]] = NULL_VAL
@@ -208,12 +221,12 @@ def align_box_score(doc):
     doc['box_score']['SECOND_NAME']['ENDBLOCK'] = END_OF_BLOCK
 
     # align PAD player to 30 players, {ATT: {<PAD0>: N/A}}
-    for attr,val in doc['box_score'].items():
+    for attr, val in doc['box_score'].items():
         # attr = 'FTA', val = {number: value, ...}
         if attr in ignore:
             continue
         if len(val) < MAX_PLAYERS:
-            for i in range(MAX_PLAYERS-len(val)):
+            for i in range(MAX_PLAYERS - len(val)):
                 val[NULL_ENTITIES[i]] = NULL_VAL
         # add ENDBLOCK at the end of each column
         val['ENDBLOCK'] = END_OF_BLOCK
@@ -223,6 +236,7 @@ def align_box_score(doc):
     # player_number = [p for p in doc['box_score']['PLAYER_NAME']]
     # doc['box_score']['ENDBLOCK'] = {p:END_OF_BLOCK for p in player_number}
     return doc
+
 
 def main():
     """A minitest function."""

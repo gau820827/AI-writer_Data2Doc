@@ -23,9 +23,9 @@ class Lang:
         """Init Lang with a name."""
         # Ken added <EOB> on 04/04/2018
         self.name = name
-        self.word2index = {"<SOS>": 0, "<EOS>": 1, "<PAD>": 2, "<UNK>": 3, "<EOB>": 4}
-        self.word2count = {"<EOS>": 0, "<EOB>": 0}
-        self.index2word = {0: "<SOS>", 1: "<EOS>", 2: "<PAD>", 3: "<UNK>", 4: "<EOB>"}
+        self.word2index = {"<SOS>": 0, "<EOS>": 1, "<PAD>": 2, "<UNK>": 3, "<EOB>": 4, "<BLK>": 5}
+        self.word2count = {"<EOS>": 0, "<EOB>": 0, "<BLK>": 0}
+        self.index2word = {0: "<SOS>", 1: "<EOS>", 2: "<PAD>", 3: "<UNK>", 4: "<EOB>", 5: "<BLK>"}
         self.n_words = 5  # Count SOS and EOS
 
     def addword(self, word):
@@ -147,8 +147,6 @@ def data2index(data_set, langs, max_sentences=MAX_SENTENCES):
                 sentence_cnt += 1
                 if sentence_cnt >= MAX_SENTENCES:
                     break
-
-        idx_summary.append(1)   # Append 'EOS' at the end
 
         data_set[i].append([idx_triplets] + [idx_summary])
 

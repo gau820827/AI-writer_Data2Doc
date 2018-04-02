@@ -22,6 +22,8 @@ import numpy as np
 
 SOS_TOKEN = 0
 EOS_TOKEN = 1
+PAD_TOKEN = 2
+BLK_TOKEN = 3
 
 # TODO: Extend the model to copy-based model
 
@@ -44,7 +46,6 @@ def get_batch(batch):
     """
     batch_data = []
     batch_idx_data = [[], [], [], []]
-    max_summary_length = 0
     for d in batch:
         idx_data = [[], [], []]  # for each triplet
         batch_data.append(d[:2])  # keep the original data/ not indexed version
@@ -54,9 +55,6 @@ def get_batch(batch):
 
         for idb, b in enumerate(idx_data):
             batch_idx_data[idb].append(b)
-
-        # Calculate maximum length of the summary
-        max_summary_length = max(max_summary_length, len(d[2][1]))
 
         batch_idx_data[3].append(d[2][1])
 
@@ -157,8 +155,8 @@ def sentenceloss(rt, re, rm, summary, encoder, decoder, loss_optimizer,
 
     return loss
 
-def addpaddings(summary):
-    """A helper function to add paddings to summary.
+def add_sentence_paddings(summarizes):
+    """A helper function to add paddings to sentences.
     Args:
         summary: A list (batch_size) of indexing summarizes.
                  [tokens]
@@ -166,10 +164,61 @@ def addpaddings(summary):
     Returns:
         A list (batch_size) with padding summarizes.
     """
-    max_length = len(max(summary, key=len))
-    for i in range(len(summary)):
-        summary[i] += [2 for i in range(max_length - len(summary[i]))]
-    return summary
+
+    # Add block paddings
+    def len_block(summary):
+        return summary.count(BLK_TOKEN)
+
+    max_blocks_length = max(list(map(len_block, summarizes)))
+    print(list(map(len_block, summarizes)))
+    for i in range(len(summarizes)):
+        summarizes[i] += [BLK_TOKEN for j in range(max_blocks_length - len_block(summarizes[i]))]
+
+    # Aligns with blocks
+    def to_matrix(summary):
+        mat = [[] for i in range(len_block(summary) + 1)]
+        idt = 0
+        for word in summary:
+            mat[idt].append(word)
+            if word == BLK_TOKEN:
+                idt += 1
+        return mat
+
+    for i in range(len(summarizes)):
+        summarizes[i] = to_matrix(summarizes[i])
+
+    # Add sentence paddings
+    def len_sentence(matrix):
+        return max(list(map(len, matrix)))
+
+    max_sentence_length = max([len_sentence(s) for s in summarizes])
+    for i in range(len(summarizes)):
+        for j in range(len(summarizes[i])):
+            summarizes[i][j] += [PAD_TOKEN for k in range(max_sentence_length - len(summarizes[i][j]))]
+
+    # Join back the matrix
+    def to_list(matrix):
+        return [j for i in matrix for j in i]
+
+    for i in range(len(summarizes)):
+        summarizes[i] = to_list(summarizes[i])
+
+    return summarizes
+
+
+def addpaddings(tokens):
+    """A helper function to add paddings to tokens.
+
+    Args:
+        summary: A list (batch_size) of indexing tokens.
+
+    Returns:
+        A list (batch_size) with padding tokens.
+    """
+    max_length = len(max(tokens, key=len))
+    for i in range(len(tokens)):
+        tokens[i] += [PAD_TOKEN for i in range(max_length - len(tokens[i]))]
+    return tokens
 
 
 def train(train_set, langs, embedding_size=600, learning_rate=0.01,
@@ -232,7 +281,7 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
             rt = addpaddings(rt)
             re = addpaddings(re)
             rm = addpaddings(rm)
-            summary = addpaddings(summary)
+            summary = add_sentence_paddings(summary)
 
         
             rt = Variable(torch.LongTensor(rt), requires_grad=False)
