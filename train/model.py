@@ -5,6 +5,11 @@ from torch.autograd import Variable
 import torch.nn.functional as F
 
 from settings import use_cuda, MAX_LENGTH, LAYER_DEPTH
+"""
+TODO:
+    Rewrite a global and local encoder by modifying its constructor
+    and forward functino
+"""
 
 
 class docEmbedding(nn.Module):
@@ -49,6 +54,7 @@ class docEmbedding(nn.Module):
                 layer.bias.data.fill_(0)
 
 
+
 class EncoderLIN(nn.Module):
     """This is the linear encoder for the box score.
 
@@ -76,7 +82,40 @@ class EncoderLIN(nn.Module):
             return result.cuda()
         else:
             return result
+"""
+Global EncoderLIN:
+Ken add: 04/04/2018
+"""
+class GlobalEncoderLIN(nn.Module):
+    """
+    Global Encoder:
+        h_b_g = f(h_(b-1)_g, h_b_l)
+        receives: 
+            1. last time stamp in for a block at local hidden state
+            2. previous time stamp of global hidden state
+    """
+    def __init__(self, hidden_size, embedding_layer):
+        super(GlobalEncoderLIN, self).__init__()
+        self.hidden_size = hidden_size
+        self.local_encoder = embedding_layer
+        self.avgpool = nn.AvgPool1d(3, stride=2, padding=1)
 
+    def forward(self, rt, re, rm, hidden):
+        """
+        Ken edited:
+
+        """
+        #embedded = self.embedding(rt, re, rm)
+        output = torch.cat((embedded, hidden), dim=1)
+        output = self.avgpool(output.view(-1, 1, 2 * self.hidden_size))
+        return output.squeeze(1)
+
+    def initHidden(self, batch_size):
+        result = Variable(torch.zeros(batch_size, self.hidden_size))
+        if use_cuda:
+            return result.cuda()
+        else:
+            return result
 
 class EncoderRNN(nn.Module):
     """Vanilla encoder using pure gru."""
@@ -84,7 +123,6 @@ class EncoderRNN(nn.Module):
         super(EncoderRNN, self).__init__()
         self.n_layers = n_layers
         self.hidden_size = hidden_size
-
         self.embedding = embedding_layer
         self.gru = nn.GRU(hidden_size, hidden_size, num_layers=self.n_layers)
 
@@ -105,6 +143,43 @@ class EncoderRNN(nn.Module):
         else:
             return result
 
+"""
+Global EncoderRNN:
+Ken add: 04/04/2018
+"""
+class GlobalEncoderRNN(nn.Module):
+    """
+    Global Encoder:
+        h_b_g = f(h_(b-1)_g, h_b_l)
+        receives: 
+            1. last time stamp in for a block at local hidden state
+            2. previous time stamp of global hidden state
+    """
+    def __init__(self, hidden_size, n_layers=LAYER_DEPTH):
+        super(GlobalEncoderRNN, self).__init__()
+        self.n_layers = n_layers
+        self.hidden_size = hidden_size
+        self.gru = nn.GRU(hidden_size, hidden_size, num_layers=self.n_layers)
+
+    def forward(self, loc, hidden):
+        """ 
+        Args:
+            loc: (block_numbers, batch, hidden_size * num_directions)
+            seq_len here is block_numbers
+            loc no need to permute here
+        """
+        # gru needs (seq_len, n_batch, emb_dim)
+        output, hidden = self.gru(loc, hidden)
+
+        return output, hidden
+
+    def initHidden(self, batch_size):
+        result = Variable(torch.zeros(self.n_layers, batch_size, self.hidden_size))
+
+        if use_cuda:            
+            return result.cuda()
+        else:
+            return result
 
 class EncoderBiLSTM(nn.Module):
     """Vanilla encoder using pure LSTM."""
@@ -135,6 +210,8 @@ class EncoderBiLSTM(nn.Module):
             return (forward.cuda(), backward.cuda())
         else:
             return (forward, backward)
+
+
 
 
 class AttnDecoderRNN(nn.Module):
