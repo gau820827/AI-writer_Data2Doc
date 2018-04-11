@@ -21,3 +21,8 @@ SAVE_MODEL = 5000
 ENCODER_STYLE = 'RNN'
 OUTPUT_FILE = 'newLoss'
 USE_MODEL = None
+
+# DATA PREPROCESSING
+""" Ken added """
+MAX_PLAYERS = 30  # information taken from rotowire
+PLAYER_PADDINGS=['<PAD'+str(i)+'>' for i in range(0, MAX_PLAYERS)]

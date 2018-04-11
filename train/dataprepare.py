@@ -1,7 +1,6 @@
 """This is the module for preparing data."""
 from preprocessing import readfile
-from settings import file_loc, MAX_SENTENCES
-
+from settings import file_loc, MAX_SENTENCES, PLAYER_PADDINGS
 
 class Lang:
     """A class to summarize encoding information.
@@ -22,14 +21,22 @@ class Lang:
 
     def __init__(self, name):
         """Init Lang with a name."""
+        # Ken added <EOB> on 04/04/2018
         self.name = name
-        self.word2index = {"<SOS>": 0, "<EOS>": 1, "<PAD>": 2, "<UNK>": 3}
-        self.word2count = {"<EOS>": 0}
-        self.index2word = {0: "<SOS>", 1: "<EOS>", 2: "<PAD>", 3: "<UNK>"}
-        self.n_words = 4  # Count SOS and EOS
+        self.word2index = {"<SOS>": 0, "<EOS>": 1, "<PAD>": 2, "<UNK>": 3, "<EOB>": 4}
+        self.word2count = {"<EOS>": 0, "<EOB>": 0}
+        self.index2word = {0: "<SOS>", 1: "<EOS>", 2: "<PAD>", 3: "<UNK>", 4: "<EOB>"}
+        self.n_words = 5  # Count SOS and EOS
 
     def addword(self, word):
-        """Add a word to the dict."""
+        """Add a word to the dict.
+        Ken update: 04/04/2018
+            Players' paddings are indexed to <PAD>
+        """
+        if word in PLAYER_PADDINGS:
+            # PLAYER_PADDINGS=[<PAD0>, <PAD1>, ... <PAD29>]
+            word = "<PAD>"
+
         if word not in self.word2index:
             self.word2index[word] = self.n_words
             self.word2count[word] = 1
@@ -52,7 +59,6 @@ def readLang(data_set):
     Returns:
         4 Langs for (r.t, r.e, r.m, 'summary')
         (ex. AST, 'Al Hortford', 10, 'summary')
-
     """
     rt = Lang('rt')
     re = Lang('re')
@@ -61,10 +67,14 @@ def readLang(data_set):
 
     for v in data_set:
         for triplet in v[0]:
+            #  Example:
+            #       triplet ('TEAM-FT_PCT', 'Cavaliers', '68')
+            #               ('FGA', 'Tyler Zeller', '6')
             rt.addword(triplet[0])
             re.addword(triplet[1])
             rm.addword(triplet[2])
         for word in v[1]:
+            # summary
             summarize.addword(word)
 
     return rt, re, rm, summarize
@@ -86,7 +96,7 @@ def loaddata(data_dir, mode='train'):
     data_set = readfile(data_dir + mode + '.json')
 
     rt, re, rm, summary = readLang(data_set)
-
+    
     print("Read %s data" % mode)
     print("Read %s box score summary" % len(data_set))
     print("Embedding size of (r.t, r.e, r.m) and summary:")
