@@ -1,5 +1,6 @@
 """This is core training part, containing different models."""
 import time
+import sys
 
 import torch
 import torch.nn as nn
@@ -206,6 +207,7 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
                 print("Time {}, iter {}, avg loss = {:.4f}".format(
                     gettime(start), iteration, total_loss / get_loss))
                 total_loss = 0
+                sys.stdout.flush()
         if epo % save_model == 0:
             torch.save(encoder.state_dict(), "{}_encoder_{}".format(OUTPUT_FILE, iteration))
             torch.save(decoder.state_dict(), "{}_decoder_{}".format(OUTPUT_FILE, iteration))
@@ -362,10 +364,11 @@ def showconfig():
 
 
 def main():
+    print("Start Training")
     # Display Configuration
     showconfig()
-
     # Default parameter
+    sys.stdout.flush()
     embedding_size = EMBEDDING_SIZE
     learning_rate = LR
     train_iter_time = ITER_TIME
