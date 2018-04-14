@@ -1,6 +1,5 @@
 """This is core training part, containing different models."""
 import time
-import sys
 
 import torch
 import torch.nn as nn
@@ -109,12 +108,8 @@ def sentenceloss(rt, re, rm, summary, encoder, decoder,
         loss += criterion(decoder_output, summary[:, di])
         decoder_input = summary[:, di]  # Supervised
 
-    loss.backward()
 
-    loss_optimizer.step()
-
-    return loss.data[0] / target_length
-
+    return loss
 
 def addpaddings(summary):
     """A helper function to add paddings to summary.
@@ -163,7 +158,7 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         decoder = load_model(decoder, use_model[1])
 
     # Choose optimizer
-    loss_optimizer = optim.Adagrad(list(encoder.parameters()) + list(decoder.parameters()), lr=learning_rate, lr_decay=0, weight_decay=0)
+    loss_optimizer = optim.Adagrad(list(encoder.parameters()) + list(decoder.parameters()), lr=learning_rate, lr_decay=0.9, weight_decay=0)
     #decoder_optimizer = optim.Adagrad(decoder.parameters(), lr=learning_rate, lr_decay=0, weight_decay=0)
 
     criterion = nn.NLLLoss()
@@ -197,20 +192,24 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
                 rt, re, rm, summary = rt.cuda(), re.cuda(), rm.cuda(), summary.cuda()
 
             # Get the average loss on the sentences
+            target_length = summary.size()[1]
+
             loss = sentenceloss(rt, re, rm, summary, encoder, decoder,
                             loss_optimizer, criterion,
                             embedding_size, encoder_style)
-            total_loss += loss
+            loss.backward()
+            torch.nn.utils.clip_grad_norm(list(encoder.parameters()) + list(decoder.parameters()), 2)
+            loss_optimizer.step()
 
+            total_loss += loss.data[0] / target_length
             # Print the information and save model
             if iteration % get_loss == 0:
                 print("Time {}, iter {}, avg loss = {:.4f}".format(
                     gettime(start), iteration, total_loss / get_loss))
                 total_loss = 0
-                sys.stdout.flush()
         if epo % save_model == 0:
-            torch.save(encoder.state_dict(), "{}_encoder_{}".format(OUTPUT_FILE, iteration))
-            torch.save(decoder.state_dict(), "{}_decoder_{}".format(OUTPUT_FILE, iteration))
+            torch.save(encoder.state_dict(), "models/{}_encoder_{}".format(OUTPUT_FILE, iteration))
+            torch.save(decoder.state_dict(), "models/{}_decoder_{}".format(OUTPUT_FILE, iteration))
             print("Save the model at iter {}".format(iteration))
     
     return encoder, decoder
@@ -368,7 +367,6 @@ def main():
     # Display Configuration
     showconfig()
     # Default parameter
-    sys.stdout.flush()
     embedding_size = EMBEDDING_SIZE
     learning_rate = LR
     train_iter_time = ITER_TIME
@@ -379,7 +377,7 @@ def main():
     train_data = data2index(train_data, train_lang)
     encoder, decoder = train(train_data, train_lang,
                              embedding_size=embedding_size, learning_rate=learning_rate,
-                             iter_time=train_iter_time, batch_size=batch_size)
+                             iter_time=train_iter_time, batch_size=batch_size, use_model=USE_MODEL)
 
     # For evaluation
     valid_data, _ = loaddata(file_loc, 'valid')
