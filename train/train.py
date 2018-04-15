@@ -158,7 +158,7 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         decoder = load_model(decoder, use_model[1])
 
     # Choose optimizer
-    loss_optimizer = optim.Adagrad(list(encoder.parameters()) + list(decoder.parameters()), lr=learning_rate, lr_decay=0.9, weight_decay=0)
+    loss_optimizer = optim.Adagrad(list(encoder.parameters()) + list(decoder.parameters()), lr=learning_rate, lr_decay=0, weight_decay=0)
     #decoder_optimizer = optim.Adagrad(decoder.parameters(), lr=learning_rate, lr_decay=0, weight_decay=0)
 
     criterion = nn.NLLLoss()
@@ -210,6 +210,7 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         if epo % save_model == 0:
             torch.save(encoder.state_dict(), "models/{}_encoder_{}".format(OUTPUT_FILE, iteration))
             torch.save(decoder.state_dict(), "models/{}_decoder_{}".format(OUTPUT_FILE, iteration))
+            torch.save(loss_optimizer.state_dict(), "models/{}_optim_{}".format(OUTPUT_FILE, iteration))
             print("Save the model at iter {}".format(iteration))
     
     return encoder, decoder
