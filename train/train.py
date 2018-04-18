@@ -148,6 +148,9 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
 
     decoder = AttnDecoderRNN(embedding_size, langs['summary'].n_words)
 
+    # Choose optimizer
+    #decoder_optimizer = optim.Adagrad(decoder.parameters(), lr=learning_rate, lr_decay=0, weight_decay=0)
+    loss_optimizer = optim.Adagrad(list(encoder.parameters()) + list(decoder.parameters()), lr=learning_rate, lr_decay=0, weight_decay=0)
     if use_cuda:
         emb.cuda()
         encoder.cuda()
@@ -156,10 +159,7 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
     if use_model is not None:
         encoder = load_model(encoder, use_model[0])
         decoder = load_model(decoder, use_model[1])
-
-    # Choose optimizer
-    loss_optimizer = optim.Adagrad(list(encoder.parameters()) + list(decoder.parameters()), lr=learning_rate, lr_decay=0, weight_decay=0)
-    #decoder_optimizer = optim.Adagrad(decoder.parameters(), lr=learning_rate, lr_decay=0, weight_decay=0)
+        loss_optimizer.load_state_dict(torch.load(use_model[2]))
 
     criterion = nn.NLLLoss()
 
