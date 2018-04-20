@@ -62,12 +62,14 @@ def get_batch(batch):
 
 
 def find_max_block_numbers(batch_length, langs, rm):
+    blocks_lens = [[] for i in range(batch_length)]
     BLOCK_NUMBERS = np.ones(batch_length)
     for bi in range(batch_length):
         for ei in range(len(rm[bi, :])):
             if langs['rm'].index2word[int(rm[bi, ei].data[0])] == '<EOB>':
+                blocks_lens[bi].append(ei)
                 BLOCK_NUMBERS[bi] += 1
-    return int(np.max(BLOCK_NUMBERS))
+    return int(np.max(BLOCK_NUMBERS)), blocks_lens
 
 
 def sentenceloss(rt, re, rm, summary, encoder, decoder, loss_optimizer,
@@ -86,7 +88,7 @@ def sentenceloss(rt, re, rm, summary, encoder, decoder, loss_optimizer,
     target_length = summary.size()[1]
 
     # MAX_BLOCK is the number of global hidden states
-    MAX_BLOCK = find_max_block_numbers(batch_length, langs, rm)
+    MAX_BLOCK, blocks_lens = find_max_block_numbers(batch_length, langs, rm)
     BLOCK_JUMPS = 31
 
     LocalEncoder = encoder.LocalEncoder
@@ -144,13 +146,40 @@ def sentenceloss(rt, re, rm, summary, encoder, decoder, loss_optimizer,
     decoder_input = Variable(torch.LongTensor(batch_length).zero_(), requires_grad=False)
     decoder_input = decoder_input.cuda() if use_cuda else decoder_input
 
-    # Feed the target as the next input
-    for di in range(target_length):
-        decoder_output, decoder_hidden, decoder_attention = decoder(
-            decoder_input, decoder_hidden, encoder_outputs)
+    # Currently, we pad all box-scores to be the same length and blocks
+    blocks_len = blocks_lens[0]
 
-        loss += criterion(decoder_output, summary[:, di])
-        decoder_input = summary[:, di]  # Supervised
+    # decoder starts
+    gnh = global_decoder.initHidden(batch_length)
+    lnh = local_decoder.initHidden(batch_length)
+
+    g_input = global_encoder_outputs[:, -1]
+    l_input = Variable(torch.LongTensor(batch_length).zero_())
+    l_input = l_input.cuda() if use_cuda else l_input
+
+
+    # Debugging check the dimension
+    print('hl size: {}'.format(local_encoder_outputs.size()))
+    print('gl size: {}'.format(global_encoder_outputs.size()))
+    print('global out size: {}'.format(global_out.size()))
+    print('')
+    print('g_input size: {}'.format(g_input.size()))
+    print('l_input size: {}'.format(l_input.size()))
+    print('')
+
+    for di in range(target_length):
+
+        # Feed the global decoder
+        if di == 0 or summary[0, di].data[0] == BLK_TOKEN:
+            g_output, gnh, g_context, g_attn_weights = global_decoder(
+                g_input, gnh, global_encoder_outputs)
+
+        # Feed the target as the next input
+        l_output, lnh, l_context, l_attn_weights = local_decoder(
+            l_input, lnh, g_attn_weights, local_encoder_outputs, blocks_len)
+
+        loss += criterion(l_output, summary[:, di])
+        l_input = summary[:, di]  # Supervised
 
 
     return loss
