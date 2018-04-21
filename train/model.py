@@ -53,8 +53,6 @@ class docEmbedding(nn.Module):
             if layer in lin_layers:
                 layer.bias.data.fill_(0)
 
-
-
 class EncoderLIN(nn.Module):
     """This is the linear encoder for the box score.
 
@@ -117,20 +115,39 @@ class GlobalEncoderLIN(nn.Module):
         else:
             return result
 
+
+
+"""
+Ken add: 04/21/2018
+Hierarchcal Encoder RNN
+"""
+class HierarchicalEncoderRNN():
+    def __init__(self, local_hidden, local_embed, global_hidden):
+        self.LocalEncoder = EncoderRNN(local_hidden, local_embed, TYPE='local')
+        self.GlobalEncoder = EncoderRNN(global_hidden, TYPE='global')
+
 class EncoderRNN(nn.Module):
     """Vanilla encoder using pure gru."""
-    def __init__(self, hidden_size, embedding_layer, n_layers=LAYER_DEPTH):
+    def __init__(self, hidden_size, embedding_layer=None, n_layers=LAYER_DEPTH, TYPE='local'):
         super(EncoderRNN, self).__init__()
+        self.TYPE = TYPE
         self.n_layers = n_layers
         self.hidden_size = hidden_size
-        self.embedding = embedding_layer
+        if self.TYPE == 'local':
+            self.embedding = embedding_layer
+        
         self.gru = nn.GRU(hidden_size, hidden_size, num_layers=self.n_layers)
 
-    def forward(self, rt, re, rm, hidden):
-        embedded = self.embedding(rt, re, rm)
+    def forward(self, Input, hidden):
         # embedded is of size (n_batch, seq_len, emb_dim)
         # gru needs (seq_len, n_batch, emb_dim)
-        inp = embedded.permute(1,0,2)
+        if self.TYPE == 'local':
+            # local encoder: input is (rt, re, rm)
+            embedded = self.embedding(Input["rt"], Input["re"], Input["rm"])
+            inp = embedded.permute(1,0,2)
+        else:
+            # global encoder: input is local_hidden_states
+            inp = Input["local_hidden_states"]
         output, hidden = self.gru(inp, hidden)
 
         return output, hidden
@@ -143,76 +160,36 @@ class EncoderRNN(nn.Module):
         else:
             return result
 
-"""
-Global EncoderRNN:
-Ken add: 04/04/2018
-"""
-class GlobalEncoderRNN(nn.Module):
-    """
-    Global Encoder:
-        h_b_g = f(h_(b-1)_g, h_b_l)
-        receives: 
-            1. last time stamp in for a block at local hidden state
-            2. previous time stamp of global hidden state
-    """
-    def __init__(self, hidden_size, n_layers=LAYER_DEPTH):
-        super(GlobalEncoderRNN, self).__init__()
-        self.n_layers = n_layers
-        self.hidden_size = hidden_size
-        self.gru = nn.GRU(hidden_size, hidden_size, num_layers=self.n_layers)
+class EncoderBiLSTM():
+    class LocalEncoderBiLSTM(nn.Module):
+        """Vanilla encoder using pure LSTM."""
+        def __init__(self, hidden_size, embedding_layer, n_layers=LAYER_DEPTH):
+            super(EncoderBiLSTM, self).__init__()
+            self.n_layers = n_layers
+            self.hidden_size = hidden_size
 
-    def forward(self, loc, hidden):
-        """ 
-        Args:
-            loc: (block_numbers, batch, hidden_size * num_directions)
-            seq_len here is block_numbers
-            loc no need to permute here
-        """
-        # gru needs (seq_len, n_batch, emb_dim)
-        output, hidden = self.gru(loc, hidden)
+            self.embedding = embedding_layer
+            self.bilstm = nn.LSTM(hidden_size, hidden_size // 2, num_layers=n_layers, bidirectional=True)
 
-        return output, hidden
+        def forward(self, rt, re, rm, hidden):
+            embedded = self.embedding(rt, re, rm)
+            embedded = torch.transpose(embedded, 0, 1)
+            bilstm_outs, self.hidden = self.bilstm(embedded, hidden)
 
-    def initHidden(self, batch_size):
-        result = Variable(torch.zeros(self.n_layers, batch_size, self.hidden_size))
+            output = torch.transpose(bilstm_outs, 0, 1)
+            output = torch.transpose(output, 1, 2)
+            output = F.tanh(output)
+            output = F.max_pool1d(output, output.size(2)).squeeze(2)
 
-        if use_cuda:            
-            return result.cuda()
-        else:
-            return result
+            return output, torch.transpose(bilstm_outs, 0, 1)
 
-class EncoderBiLSTM(nn.Module):
-    """Vanilla encoder using pure LSTM."""
-    def __init__(self, hidden_size, embedding_layer, n_layers=LAYER_DEPTH):
-        super(EncoderBiLSTM, self).__init__()
-        self.n_layers = n_layers
-        self.hidden_size = hidden_size
-
-        self.embedding = embedding_layer
-        self.bilstm = nn.LSTM(hidden_size, hidden_size // 2, num_layers=n_layers, bidirectional=True)
-
-    def forward(self, rt, re, rm, hidden):
-        embedded = self.embedding(rt, re, rm)
-        embedded = torch.transpose(embedded, 0, 1)
-        bilstm_outs, self.hidden = self.bilstm(embedded, hidden)
-
-        output = torch.transpose(bilstm_outs, 0, 1)
-        output = torch.transpose(output, 1, 2)
-        output = F.tanh(output)
-        output = F.max_pool1d(output, output.size(2)).squeeze(2)
-
-        return output, torch.transpose(bilstm_outs, 0, 1)
-
-    def initHidden(self, batch_size):
-        forward = Variable(torch.zeros(2 * self.n_layers, batch_size, self.hidden_size // 2))
-        backward = Variable(torch.zeros(2 * self.n_layers, batch_size, self.hidden_size // 2))
-        if use_cuda:
-            return (forward.cuda(), backward.cuda())
-        else:
-            return (forward, backward)
-
-
-
+        def initHidden(self, batch_size):
+            forward = Variable(torch.zeros(2 * self.n_layers, batch_size, self.hidden_size // 2))
+            backward = Variable(torch.zeros(2 * self.n_layers, batch_size, self.hidden_size // 2))
+            if use_cuda:
+                return (forward.cuda(), backward.cuda())
+            else:
+                return (forward, backward)
 
 class AttnDecoderRNN(nn.Module):
     def __init__(self, hidden_size, output_size, max_length=MAX_LENGTH, n_layers=LAYER_DEPTH, dropout_p=0.5):
