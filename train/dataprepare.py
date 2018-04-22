@@ -2,6 +2,7 @@
 from preprocessing import readfile
 from settings import file_loc, MAX_SENTENCES, PLAYER_PADDINGS
 
+
 class Lang:
     """A class to summarize encoding information.
 
@@ -66,14 +67,14 @@ def readLang(data_set):
     summarize = Lang('summarize')
 
     for v in data_set:
-        for triplet in v[0]:
+        for triplet in v.triplets:
             #  Example:
             #       triplet ('TEAM-FT_PCT', 'Cavaliers', '68')
             #               ('FGA', 'Tyler Zeller', '6')
             rt.addword(triplet[0])
             re.addword(triplet[1])
             rm.addword(triplet[2])
-        for word in v[1]:
+        for word in v.summary:
             # summary
             summarize.addword(word)
 
@@ -96,7 +97,7 @@ def loaddata(data_dir, mode='train'):
     data_set = readfile(data_dir + mode + '.json')
 
     rt, re, rm, summary = readLang(data_set)
-    
+
     print("Read %s data" % mode)
     print("Read %s box score summary" % len(data_set))
     print("Embedding size of (r.t, r.e, r.m) and summary:")
@@ -131,24 +132,28 @@ def data2index(data_set, langs, max_sentences=MAX_SENTENCES):
     # Extend the dataset with indexing
     for i in range(len(data_set)):
         idx_triplets = []
-        for triplet in data_set[i][0]:
+        for triplet in data_set[i].triplets:
             idx_triplet = [None, None, None]
             idx_triplet[0] = findword2index(langs['rt'], triplet[0])
             idx_triplet[1] = findword2index(langs['re'], triplet[1])
             idx_triplet[2] = findword2index(langs['rm'], triplet[2])
             idx_triplets.append(tuple(idx_triplet))
 
+        # Indexing the summaries
         idx_summary = []
         sentence_cnt = 0
-        for word in data_set[i][1]:
+        for word in data_set[i].summary:
             idx_summary.append(findword2index(langs['summary'], word))
 
-            if MAX_SENTENCES is not None and word == '.':
+            if word == '.':
                 sentence_cnt += 1
-                if sentence_cnt >= MAX_SENTENCES:
-                    break
 
-        data_set[i].append([idx_triplets] + [idx_summary])
+            if MAX_SENTENCES is not None and sentence_cnt >= MAX_SENTENCES:
+                break
+
+        # data_set[i].append([idx_triplets] + [idx_summary])
+        data_set[i].idx_data = [idx_triplets] + [idx_summary]
+        data_set[i].sent_leng = sentence_cnt
 
     return data_set
 

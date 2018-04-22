@@ -8,14 +8,15 @@ from torch import optim
 
 from preprocessing import data_iter
 from dataprepare import loaddata, data2index
+from model import docEmbedding
 from model import EncoderLIN, HierarchicalEncoderRNN, EncoderBiLSTM
-from model import AttnDecoderRNN, docEmbedding
+from model import AttnDecoderRNN, HierarchicalDecoder
 from util import gettime, load_model, showAttention
 from util import PriorityQueue
 
 from settings import file_loc, use_cuda, MAX_LENGTH, USE_MODEL
 from settings import EMBEDDING_SIZE, LR, ITER_TIME, BATCH_SIZE
-from settings import MAX_SENTENCES, ENCODER_STYLE
+from settings import MAX_SENTENCES, ENCODER_STYLE, DECODER_STYLE
 from settings import GET_LOSS, SAVE_MODEL, OUTPUT_FILE
 
 import numpy as np
@@ -23,12 +24,10 @@ import numpy as np
 SOS_TOKEN = 0
 EOS_TOKEN = 1
 PAD_TOKEN = 2
-BLK_TOKEN = 3
+BLK_TOKEN = 5
 
 # TODO: Extend the model to copy-based model
 
-# delete it:
-from pprint import pprint
 
 
 def get_batch(batch):
@@ -48,15 +47,15 @@ def get_batch(batch):
     batch_idx_data = [[], [], [], []]
     for d in batch:
         idx_data = [[], [], []]  # for each triplet
-        batch_data.append(d[:2])  # keep the original data/ not indexed version
-        for triplets in d[2][0]:
+        batch_data.append([d.triplets, d.summary])  # keep the original data/ not indexed version
+        for triplets in d.idx_data[0]:
             for idt, t in enumerate(triplets):
                 idx_data[idt].append(t)
 
         for idb, b in enumerate(idx_data):
             batch_idx_data[idb].append(b)
 
-        batch_idx_data[3].append(d[2][1])
+        batch_idx_data[3].append(d.idx_data[1])
 
     return batch_data, batch_idx_data
 
@@ -140,11 +139,9 @@ def sentenceloss(rt, re, rm, summary, encoder, decoder, loss_optimizer,
         local_encoder_outputs = local_out.permute(1, 0, 2)
         global_encoder_outputs = global_out.permute(1, 0, 2)
 
-    # decoder starts
-    decoder_hidden = decoder.initHidden(batch_length)
-    decoder_hidden[0, :, :] = out[-1, :]  # might be zero
-    decoder_input = Variable(torch.LongTensor(batch_length).zero_(), requires_grad=False)
-    decoder_input = decoder_input.cuda() if use_cuda else decoder_input
+    # The decoder init for developing
+    global_decoder = decoder.global_decoder
+    local_decoder = decoder.local_decoder
 
     # Currently, we pad all box-scores to be the same length and blocks
     blocks_len = blocks_lens[0]
@@ -154,21 +151,19 @@ def sentenceloss(rt, re, rm, summary, encoder, decoder, loss_optimizer,
     lnh = local_decoder.initHidden(batch_length)
 
     g_input = global_encoder_outputs[:, -1]
-    l_input = Variable(torch.LongTensor(batch_length).zero_())
+    l_input = Variable(torch.LongTensor(batch_length).zero_(), requires_grad=False)
     l_input = l_input.cuda() if use_cuda else l_input
 
-
     # Debugging check the dimension
-    print('hl size: {}'.format(local_encoder_outputs.size()))
-    print('gl size: {}'.format(global_encoder_outputs.size()))
-    print('global out size: {}'.format(global_out.size()))
-    print('')
-    print('g_input size: {}'.format(g_input.size()))
-    print('l_input size: {}'.format(l_input.size()))
-    print('')
+    # print('hl size: {}'.format(local_encoder_outputs.size()))
+    # print('gl size: {}'.format(global_encoder_outputs.size()))
+    # print('global out size: {}'.format(global_out.size()))
+    # print('')
+    # print('g_input size: {}'.format(g_input.size()))
+    # print('l_input size: {}'.format(l_input.size()))
+    # print('')
 
     for di in range(target_length):
-
         # Feed the global decoder
         if di == 0 or summary[0, di].data[0] == BLK_TOKEN:
             g_output, gnh, g_context, g_attn_weights = global_decoder(
@@ -179,6 +174,8 @@ def sentenceloss(rt, re, rm, summary, encoder, decoder, loss_optimizer,
             l_input, lnh, g_attn_weights, local_encoder_outputs, blocks_len)
 
         loss += criterion(l_output, summary[:, di])
+
+        g_input = lnh[-1, :, :]
         l_input = summary[:, di]  # Supervised
 
 
@@ -251,7 +248,8 @@ def addpaddings(tokens):
 
 def train(train_set, langs, embedding_size=600, learning_rate=0.01,
           iter_time=10, batch_size=32, get_loss=GET_LOSS, save_model=SAVE_MODEL,
-          encoder_style=ENCODER_STYLE, use_model=USE_MODEL):
+          encoder_style=ENCODER_STYLE, decoder_style=DECODER_STYLE,
+          use_model=USE_MODEL):
     """The training procedure."""
     # Set the timer
     start = time.time()
@@ -262,6 +260,10 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
                        langs['rm'].n_words, embedding_size)
     emb.init_weights()
 
+    # # # # # # # # # # # # # # # # # # # # # # # # #
+    # Ken edit: Hierarchical Encoder 04/01
+    #   ** Do RNN first
+    #   1. add: global_encoder = GlobalEncoderRNN(embedding_size, local_encoder)
     if encoder_style == 'LIN':
         encoder = EncoderLIN(embedding_size, emb)
     elif encoder_style == 'BiLSTM':
@@ -271,7 +273,11 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         encoder_args = {"hidden_size": embedding_size, "local_embed": emb}
         encoder = HierarchicalEncoderRNN(**encoder_args)
 
-    decoder = AttnDecoderRNN(embedding_size, langs['summary'].n_words)
+    # Choose decoder style
+    if decoder_style == 'HierarchicalRNN':
+        decoder = HierarchicalDecoder(embedding_size, langs['summary'].n_words)
+    else:
+        decoder = AttnDecoderRNN(embedding_size, langs['summary'].n_words)
 
     # Choose optimizer
     #decoder_optimizer = optim.Adagrad(decoder.parameters(), lr=learning_rate, lr_decay=0, weight_decay=0)
@@ -288,9 +294,15 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
 
     # Choose optimizer
     # Ken added opitimzer
-    loss_optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), 
-                                                    lr=learning_rate, weight_decay=0)
-    #decoder_optimizer = optim.Adagrad(decoder.parameters(), lr=learning_rate, lr_decay=0, weight_decay=0)
+
+    loss_optimizer = optim.Adam(list(local_encoder.parameters()) +
+                                list(global_encoder.parameters()) +
+                                list(decoder.parameters()), lr=learning_rate, weight_decay=0)
+
+    loss_optimizer = optim.Adagrad(list(local_encoder.parameters()) +
+                                   list(global_encoder.parameters()) +
+                                   list(decoder.parameters()),
+                                   lr=learning_rate, lr_decay=0, weight_decay=0)
 
     criterion = nn.NLLLoss()
 
@@ -304,14 +316,18 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
             iteration += 1
             data, idx_data = get_batch(dt)
             rt, re, rm, summary = idx_data
-        
+
             # Add paddings
             rt = addpaddings(rt)
             re = addpaddings(re)
             rm = addpaddings(rm)
-            summary = add_sentence_paddings(summary)
 
-        
+            # For summary paddings, if the model is herarchical then pad between sentences
+            if decoder_style == 'HierarchicalRNN':
+                summary = add_sentence_paddings(summary)
+            else:
+                summary = addpaddings(summary)
+
             rt = Variable(torch.LongTensor(rt), requires_grad=False)
             re = Variable(torch.LongTensor(re), requires_grad=False)
             rm = Variable(torch.LongTensor(rm), requires_grad=False)
@@ -325,7 +341,6 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
             # Get the average loss on the sentences
             target_length = summary.size()[1]
 
-       
         # Get the average loss on the sentences
         # # # # # # # # # # # # # # # # # # # # # # # # #
         # calculate loss of "a batch of input sequence"
@@ -341,14 +356,14 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
             total_loss = 0
 
         if iteration % save_model == 0:
-            torch.save(encoder.state_dict(), 
+            torch.save(encoder.state_dict(),
                        "{}_encoder_{}".format(OUTPUT_FILE, iteration))
-            torch.save(decoder.state_dict(), 
+            torch.save(decoder.state_dict(),
                        "{}_decoder_{}".format(OUTPUT_FILE, iteration))
             torch.save(loss_optimizer.state_dict(),
                        "models/{}_optim_{}".format(OUTPUT_FILE, iteration))
             print("Save the model at iter {}".format(iteration))
-    
+
     return encoder, decoder
 
 
@@ -496,6 +511,7 @@ def showconfig():
     print("EMBEDDING_SIZE = {}\nLR = {}\nITER_TIME = {}\nBATCH_SIZE = {}".format(
         EMBEDDING_SIZE, LR, ITER_TIME, BATCH_SIZE))
     print("MAX_SENTENCES = {}\nENCODER_STYLE = {}".format(MAX_SENTENCES, ENCODER_STYLE))
+    print("DECODER_STYLE = {}".format(DECODER_STYLE))
     print("USE_MODEL = {}\nOUTPUT_FILE = {}".format(USE_MODEL, OUTPUT_FILE))
 
 

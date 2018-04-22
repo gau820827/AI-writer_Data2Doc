@@ -21,10 +21,11 @@ GET_LOSS = 30
 SAVE_MODEL = 5
 # ENCODER_STYLE = 'BiLSTM'
 ENCODER_STYLE = 'RNN'
+DECODER_STYLE = 'HierarchicalRNN'
 OUTPUT_FILE = 'newLoss'
 USE_MODEL = None
 
 # DATA PREPROCESSING
 """ Ken added """
 MAX_PLAYERS = 30  # information taken from rotowire
-PLAYER_PADDINGS=['<PAD'+str(i)+'>' for i in range(0, MAX_PLAYERS)]
+PLAYER_PADDINGS = ['<PAD' + str(i) + '>' for i in range(0, MAX_PLAYERS)]

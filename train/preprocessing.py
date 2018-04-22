@@ -15,6 +15,26 @@ Ken
 """
 
 
+class Boxdata:
+    """ This is the class for storing the box-score dataset.
+
+    There are four attributes in this class.
+
+    Attributes:
+        triplets:  A list storing the triplets of box-score
+        summary:   A list storing the tokens of the summary
+        idx_data:  The indexing version of triplets and summary
+        sent_leng: The length of sentences of the summary
+
+    """
+    def __init__(self):
+        """Init a Boxdata data storage."""
+        self.triplets = []
+        self.summary = []
+        self.idx_data = []
+        self.sent_leng = 0
+
+
 def readfile(filename):
     """The function to prepare data.
 
@@ -51,7 +71,12 @@ def readfile(filename):
             #     box score
             d = align_box_score(d)
             # test_box_score_aligned(d)
-            result.append([doc2vec(d), add_blocks(d['summary'])])
+
+            boxdata = Boxdata()
+            boxdata.triplets = doc2vec(d)
+            boxdata.summary = add_blocks(d['summary'])
+            # result.append([doc2vec(d), add_blocks(d['summary'])])
+            result.append(boxdata)
     return result
 
 
@@ -171,15 +196,19 @@ def data_iter(source, batch_size=32, shuffle=True):
     # TODO Change to Permute
     order = list(range(dataset_size))
     if shuffle:
-        random.shuffle(order)
+        random.shuffle(source)
 
+    # Get batch based on similar length of sentences
+    source.sort(key=lambda boxdata: boxdata.sent_leng)
     while True:
         start += batch_size
         if start > dataset_size - batch_size:
             return
-            #start = 0   # Start another epoch.
-            #if shuffle:
-            #    random.shuffle(order)
+            # start = 0   # Start another epoch.
+            # if shuffle:
+            #     random.shuffle(source)
+            #     source.sort(key=lambda boxdata: boxdata.sent_leng)
+
         batch_indices = order[start:start + batch_size]
         batch = [source[index] for index in batch_indices]
         yield batch
@@ -200,7 +229,7 @@ def align_box_score(doc):
     #   day, home_line}
     #
     # Retruns:
-    #   box.shape = (players = 30, attributes = MAX_ATTRIBUTE) 
+    #   box.shape = (players = 30, attributes = MAX_ATTRIBUTE)
     #
     NULL_VAL = 'N/A'
     END_OF_BLOCK = '<EOB>'
