@@ -94,7 +94,7 @@ def sentenceloss(rt, re, rm, summary, encoder, decoder, loss_optimizer,
     GlobalEncoder = encoder.GlobalEncoder
 
     local_encoder_outputs = Variable(torch.zeros(batch_length, MAX_LENGTH, embedding_size))
-    local_encoder_outputs = encoder_outputs.cuda() if use_cuda else local_encoder_outputs
+    local_encoder_outputs = local_encoder_outputs.cuda() if use_cuda else local_encoder_outputs
     global_encoder_outputs = Variable(torch.zeros(batch_length, MAX_BLOCK, embedding_size))
     global_encoder_outputs = global_encoder_outputs.cuda() if use_cuda else global_encoder_outputs
 
