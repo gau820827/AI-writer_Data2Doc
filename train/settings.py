@@ -7,14 +7,15 @@ LAYER_DEPTH = 2
 MAX_SENTENCES = None
 USE_MODEL = None
 #USE_MODEL = ['./models/clipped_encoder_25440', './models/clipped_decoder_25440']
-USE_MODEL = ['./models/long3_encoder_36040', 
-              './models/long3_decoder_36040',
-              './models/long3_optim_36040']
+USE_MODEL = ['./models/long3_encoder_36040',
+             './models/long3_decoder_36040',
+             './models/long3_optim_36040']
 # Parameter for training
 EMBEDDING_SIZE = 600
 LR = 0.01
 ITER_TIME = 220
 BATCH_SIZE = 16
+GRAD_CLIP = 5
 
 # Parameter for display
 GET_LOSS = 30

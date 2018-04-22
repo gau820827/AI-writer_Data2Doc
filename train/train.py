@@ -15,7 +15,7 @@ from util import gettime, load_model, showAttention
 from util import PriorityQueue
 
 from settings import file_loc, use_cuda, MAX_LENGTH, USE_MODEL
-from settings import EMBEDDING_SIZE, LR, ITER_TIME, BATCH_SIZE
+from settings import EMBEDDING_SIZE, LR, ITER_TIME, BATCH_SIZE, GRAD_CLIP
 from settings import MAX_SENTENCES, ENCODER_STYLE, DECODER_STYLE
 from settings import GET_LOSS, SAVE_MODEL, OUTPUT_FILE
 
@@ -27,7 +27,6 @@ PAD_TOKEN = 2
 BLK_TOKEN = 5
 
 # TODO: Extend the model to copy-based model
-
 
 
 def get_batch(batch):
@@ -61,7 +60,7 @@ def get_batch(batch):
 
 
 def find_max_block_numbers(batch_length, langs, rm):
-    blocks_lens = [[] for i in range(batch_length)]
+    blocks_lens = [[0] for i in range(batch_length)]
     BLOCK_NUMBERS = np.ones(batch_length)
     for bi in range(batch_length):
         for ei in range(len(rm[bi, :])):
@@ -87,6 +86,7 @@ def sentenceloss(rt, re, rm, summary, encoder, decoder, loss_optimizer,
     target_length = summary.size()[1]
 
     # MAX_BLOCK is the number of global hidden states
+    # block_lens is the start position of each block
     MAX_BLOCK, blocks_lens = find_max_block_numbers(batch_length, langs, rm)
     BLOCK_JUMPS = 31
 
@@ -178,8 +178,8 @@ def sentenceloss(rt, re, rm, summary, encoder, decoder, loss_optimizer,
         g_input = lnh[-1, :, :]
         l_input = summary[:, di]  # Supervised
 
-
     return loss
+
 
 def add_sentence_paddings(summarizes):
     """A helper function to add paddings to sentences.
@@ -254,7 +254,6 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
     # Set the timer
     start = time.time()
 
-
     # Initialize the model
     emb = docEmbedding(langs['rt'].n_words, langs['re'].n_words,
                        langs['rm'].n_words, embedding_size)
@@ -280,8 +279,9 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         decoder = AttnDecoderRNN(embedding_size, langs['summary'].n_words)
 
     # Choose optimizer
-    #decoder_optimizer = optim.Adagrad(decoder.parameters(), lr=learning_rate, lr_decay=0, weight_decay=0)
-    loss_optimizer = optim.Adagrad(list(encoder.parameters()) + list(decoder.parameters()), lr=learning_rate, lr_decay=0, weight_decay=0)
+    loss_optimizer = optim.Adagrad(list(encoder.parameters()) + list(decoder.parameters()),
+                                   lr=learning_rate, lr_decay=0, weight_decay=0)
+
     if use_cuda:
         emb.cuda()
         encoder.cuda()
@@ -291,18 +291,6 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         encoder = load_model(encoder, use_model[0])
         decoder = load_model(decoder, use_model[1])
         loss_optimizer.load_state_dict(torch.load(use_model[2]))
-
-    # Choose optimizer
-    # Ken added opitimzer
-
-    loss_optimizer = optim.Adam(list(local_encoder.parameters()) +
-                                list(global_encoder.parameters()) +
-                                list(decoder.parameters()), lr=learning_rate, weight_decay=0)
-
-    loss_optimizer = optim.Adagrad(list(local_encoder.parameters()) +
-                                   list(global_encoder.parameters()) +
-                                   list(decoder.parameters()),
-                                   lr=learning_rate, lr_decay=0, weight_decay=0)
 
     criterion = nn.NLLLoss()
 
@@ -344,10 +332,15 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         # Get the average loss on the sentences
         # # # # # # # # # # # # # # # # # # # # # # # # #
         # calculate loss of "a batch of input sequence"
-        loss = sentenceloss(rt, re, rm, summary, encoder, decoder, loss_optimizer, 
+        loss = sentenceloss(rt, re, rm, summary, encoder, decoder, loss_optimizer,
                             criterion, embedding_size, encoder_style, langs)
         # # # # # # # # # # # # # # # # # # # # # # # # #
-        total_loss += loss
+
+        # Backpropagation
+        loss.backward()
+        torch.nn.utils.clip_grad_norm(list(encoder.parameters()) + list(decoder.parameters()), GRAD_CLIP)
+
+        total_loss += loss.data[0] / target_length
 
         # Print the information and save model
         if iteration % get_loss == 0:
@@ -510,8 +503,8 @@ def showconfig():
     """Display the configuration."""
     print("EMBEDDING_SIZE = {}\nLR = {}\nITER_TIME = {}\nBATCH_SIZE = {}".format(
         EMBEDDING_SIZE, LR, ITER_TIME, BATCH_SIZE))
-    print("MAX_SENTENCES = {}\nENCODER_STYLE = {}".format(MAX_SENTENCES, ENCODER_STYLE))
-    print("DECODER_STYLE = {}".format(DECODER_STYLE))
+    print("MAX_SENTENCES = {}\nGRAD_CLIP = {}".format(MAX_SENTENCES, GRAD_CLIP))
+    print("DECODER_STYLE = {}\nENCODER_STYLE = {}".format(DECODER_STYLE, ENCODER_STYLE))
     print("USE_MODEL = {}\nOUTPUT_FILE = {}".format(USE_MODEL, OUTPUT_FILE))
 
 
