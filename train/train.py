@@ -28,6 +28,7 @@ EOS_TOKEN = 1
 # delete it:
 from pprint import pprint
 
+
 def get_batch(batch):
     """Get the batch into training format.
 
@@ -46,7 +47,7 @@ def get_batch(batch):
     max_summary_length = 0
     for d in batch:
         idx_data = [[], [], []]  # for each triplet
-        batch_data.append(d[:2]) # keep the original data/ not indexed version
+        batch_data.append(d[:2])  # keep the original data/ not indexed version
         for triplets in d[2][0]:
             for idt, t in enumerate(triplets):
                 idx_data[idt].append(t)
@@ -61,14 +62,15 @@ def get_batch(batch):
 
     return batch_data, batch_idx_data
 
+
 def find_max_block_numbers(batch_length, langs, rm):
     BLOCK_NUMBERS = np.ones(batch_length)
     for bi in range(batch_length):
-        blocks = 0
         for ei in range(len(rm[bi, :])):
             if langs['rm'].index2word[int(rm[bi, ei].data[0])] == '<EOB>':
                 BLOCK_NUMBERS[bi] += 1
     return int(np.max(BLOCK_NUMBERS))
+
 
 def sentenceloss(rt, re, rm, summary, encoder, decoder, loss_optimizer,
                  criterion, embedding_size, encoder_style, langs):
@@ -86,6 +88,7 @@ def sentenceloss(rt, re, rm, summary, encoder, decoder, loss_optimizer,
     target_length = summary.size()[1]
     # MAX_BLOCK is the number of global hidden states
     MAX_BLOCK = find_max_block_numbers(batch_length, langs, rm)
+    BLOCK_JUMPS = 31
 
     LocalEncoder = encoder.LocalEncoder
     GlobalEncoder = encoder.GlobalEncoder
@@ -93,10 +96,7 @@ def sentenceloss(rt, re, rm, summary, encoder, decoder, loss_optimizer,
     local_encoder_outputs = encoder_outputs.cuda() if use_cuda else local_encoder_outputs
     global_encoder_outputs = Variable(torch.zeros(batch_length, MAX_BLOCK, embedding_size))
     global_encoder_outputs = global_encoder_outputs.cuda() if use_cuda else global_encoder_outputs
-    # max players = 30 + <EOB>
-    BLOCK_JUMPS = 31
     loss = 0
-    iiter = 0
 
     # Encoding
     if ENCODER_STYLE == 'BiLSTM':
@@ -116,31 +116,30 @@ def sentenceloss(rt, re, rm, summary, encoder, decoder, loss_optimizer,
         """
         # Local Encoder set up
         init_local_hidden = LocalEncoder.initHidden(batch_length)
-        local_out, local_hidden = LocalEncoder({"rt": rt, "re": re, "rm": rm}, 
-                                                            init_local_hidden)
+        local_out, local_hidden = LocalEncoder({"rt": rt, "re": re, "rm": rm},
+                                               init_local_hidden)
         # Global Encoder setup
-        global_input = Variable(torch.zeros(MAX_BLOCK, batch_length, embedding_size))
+        global_input = Variable(torch.zeros(MAX_BLOCK, batch_length,
+                                            embedding_size))
         global_input = global_input.cuda() if use_cuda else global_input
         for ei in range(input_length):
             if ei % BLOCK_JUMPS == 0:
                 # map ei to block number
-                global_input[int(ei/(BLOCK_JUMPS+1)), :, :] = local_out[ei, :, :]
+                global_input[int(ei / (BLOCK_JUMPS + 1)), :, :] = local_out[ei, :, :]
 
         init_global_hidden = GlobalEncoder.initHidden(batch_length)
-        global_out, global_hidden = GlobalEncoder({"local_hidden_states": 
-                                                global_input}, init_global_hidden)
+        global_out, global_hidden = GlobalEncoder({"local_hidden_states":
+                                                  global_input}, init_global_hidden)
         """
         Store memory information
         Unify dimension: (batch, sequence length, hidden size)
         """
-        local_encoder_outputs = local_out.permute(1,0,2)
-        global_encoder_outputs = global_out.permute(1,0,2)
-        print("Local: ", local_encoder_outputs)
-        print("Global: ", global_encoder_outputs)
+        local_encoder_outputs = local_out.permute(1, 0, 2)
+        global_encoder_outputs = global_out.permute(1, 0, 2)
 
     # decoder starts
     decoder_hidden = decoder.initHidden(batch_length)
-    decoder_hidden[0,:,:] = out[-1,:] # might be zero
+    decoder_hidden[0, :, :] = out[-1, :]  # might be zero
     decoder_input = Variable(torch.LongTensor(batch_length).zero_())
     decoder_input = decoder_input.cuda() if use_cuda else decoder_input
 
@@ -194,8 +193,7 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         encoder = EncoderBiLSTM(embedding_size, emb)
     else:
         # initialize hierarchical encoder rnn, (both global and local)
-        encoder_args = {"local_hidden": embedding_size, "local_embed": emb,
-                    "global_hidden": embedding_size}
+        encoder_args = {"hidden_size": embedding_size, "local_embed": emb}
         encoder = HierarchicalEncoderRNN(**encoder_args)
 
     decoder = AttnDecoderRNN(embedding_size, langs['summary'].n_words)
@@ -211,10 +209,8 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
 
     # Choose optimizer
     # Ken added opitimzer
-    loss_optimizer = optim.Adam(list(encoder.LocalEncoder.parameters()) + 
-                                    list(encoder.GlobalEncoder.parameters()) + 
-                                        list(decoder.parameters()), 
-                                                lr=learning_rate, weight_decay=0)
+    loss_optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), 
+                                                    lr=learning_rate, weight_decay=0)
     #decoder_optimizer = optim.Adagrad(decoder.parameters(), lr=learning_rate, lr_decay=0, weight_decay=0)
 
     criterion = nn.NLLLoss()
@@ -231,7 +227,7 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         re = addpaddings(re)
         rm = addpaddings(rm)
         summary = addpaddings(summary)
-        
+
         rt = Variable(torch.LongTensor(rt))
         re = Variable(torch.LongTensor(re))
         rm = Variable(torch.LongTensor(rm))
@@ -246,7 +242,7 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         # # # # # # # # # # # # # # # # # # # # # # # # #
         # calculate loss of "a batch of input sequence"
         loss = sentenceloss(rt, re, rm, summary, encoder, decoder, loss_optimizer, 
-                                    criterion, embedding_size, encoder_style, langs)
+                            criterion, embedding_size, encoder_style, langs)
         # # # # # # # # # # # # # # # # # # # # # # # # #
         total_loss += loss
 
@@ -257,11 +253,10 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
             total_loss = 0
 
         if iteration % save_model == 0:
-            torch.save(encoder.LocalEncoder.state_dict(), 
-                                    "{}_LocalEncoder_{}".format(OUTPUT_FILE, iteration))
-            torch.save(encoder.GlobalEncoder.state_dict(), 
-                                    "{}_GlobalEncoder_{}".format(OUTPUT_FILE, iteration))
-            torch.save(decoder.state_dict(), "{}_decoder_{}".format(OUTPUT_FILE, iteration))
+            torch.save(encoder.state_dict(), 
+                       "{}_encoder_{}".format(OUTPUT_FILE, iteration))
+            torch.save(decoder.state_dict(), 
+                       "{}_decoder_{}".format(OUTPUT_FILE, iteration))
             print("Save the model at iter {}".format(iteration))
 
     return encoder, decoder
