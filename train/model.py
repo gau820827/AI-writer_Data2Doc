@@ -247,14 +247,24 @@ class AttnDecoderRNN(nn.Module):
         self.out = nn.Linear(self.hidden_size * 2, self.output_size)
 
     def forward(self, input, hidden, encoder_outputs):
+        embedded = self.embedding(input)
 
         attn_weights = self.attn(hidden[-1, :, :], encoder_outputs)
         context = torch.bmm(attn_weights, encoder_outputs)
-        output = torch.cat((input, context.squeeze(1)), dim=1)
+
+        # Adjust the dimension after bmm()
+        context = context.squeeze(1)
+
+        output = torch.cat((embedded, context), dim=1)
 
         # To align with the library standard (seq_len, batch, input_size)
         output = output.unsqueeze(0)
         output, nh = self.gru(output, hidden)
+
+        output = output.squeeze(0)
+
+        # Output the final distribution
+        output = F.log_softmax(self.out(torch.cat((output, context), 1)))
 
         return output, nh, context, attn_weights
 

@@ -94,6 +94,7 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
     LocalEncoder = encoder.LocalEncoder
     GlobalEncoder = encoder.GlobalEncoder
 
+    # For now, these are redundant
     local_encoder_outputs = Variable(torch.zeros(batch_length, MAX_LENGTH, embedding_size))
     local_encoder_outputs = local_encoder_outputs.cuda() if use_cuda else local_encoder_outputs
     global_encoder_outputs = Variable(torch.zeros(batch_length, MAX_BLOCK, embedding_size))
@@ -182,8 +183,8 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
     return loss
 
 
-def seq_train(rt, re, rm, summary, encoder, decoder,
-              criterion, embedding_size, langs):
+def Plain_seq_train(rt, re, rm, summary, encoder, decoder,
+                    criterion, embedding_size, langs):
     batch_length = rt.size()[0]
     input_length = rt.size()[1]
     target_length = summary.size()[1]
@@ -209,14 +210,17 @@ def seq_train(rt, re, rm, summary, encoder, decoder,
         # Store memory information
         encoder_outputs = out.permute(1, 0, 2)
 
+        # Get the final hidden state
+        encoder_hidden = out[-1, :]
+
     decoder_hidden = decoder.initHidden(batch_length)
-    decoder_hidden[0, :, :] = out[-1, :]  # might be zero
+    decoder_hidden[0, :, :] = encoder_hidden  # might be zero
     decoder_input = Variable(torch.LongTensor(batch_length).zero_())
     decoder_input = decoder_input.cuda() if use_cuda else decoder_input
 
     # Feed the target as the next input
     for di in range(target_length):
-        decoder_output, decoder_hidden, decoder_attention = decoder(
+        decoder_output, decoder_hidden, decoder_context, decoder_attention = decoder(
             decoder_input, decoder_hidden, encoder_outputs)
 
         loss += criterion(decoder_output, summary[:, di])
@@ -320,7 +324,7 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         train_func = Hierarchical_seq_train
     else:
         decoder = AttnDecoderRNN(embedding_size, langs['summary'].n_words)
-        train_func = seq_train
+        train_func = Plain_seq_train
 
     # Choose optimizer
     loss_optimizer = optim.Adagrad(list(encoder.parameters()) + list(decoder.parameters()),
