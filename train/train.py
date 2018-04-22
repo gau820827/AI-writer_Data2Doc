@@ -8,7 +8,7 @@ from torch import optim
 
 from preprocessing import data_iter
 from dataprepare import loaddata, data2index
-from model import EncoderLIN, EncoderRNN, EncoderBiLSTM
+from model import EncoderLIN, EncoderRNN, EncoderBiLSTM, GlobalEncoderRNN
 from model import AttnDecoderRNN, docEmbedding
 from util import gettime, load_model, showAttention
 from util import PriorityQueue
@@ -18,11 +18,15 @@ from settings import EMBEDDING_SIZE, LR, ITER_TIME, BATCH_SIZE
 from settings import MAX_SENTENCES, ENCODER_STYLE
 from settings import GET_LOSS, SAVE_MODEL, OUTPUT_FILE
 
+import numpy as np
+
 SOS_TOKEN = 0
 EOS_TOKEN = 1
 
 # TODO: Extend the model to copy-based model
 
+# delete it:
+from pprint import pprint
 
 def get_batch(batch):
     """Get the batch into training format.
@@ -58,9 +62,18 @@ def get_batch(batch):
     return batch_data, batch_idx_data
 
 
-def sentenceloss(rt, re, rm, summary, encoder, decoder,
-                 loss_optimizer,
-                 criterion, embedding_size, encoder_style):
+# # # # # # # # # # # # # # # # # # # # # # # # #
+# Ken edit: Hierarchical Encoder
+#
+def sentenceloss(rt, re, rm, summary, local_encoder, decoder, loss_optimizer,
+                 criterion, embedding_size, encoder_style, 
+                    global_encoder, langs):
+    """
+    Ken added:
+        1. local_encoder
+        2. global_encoder
+        3. langs
+    """
     """Function for train on sentences.
 
     This function will calculate the gradient and NLLloss on sentences,
@@ -73,9 +86,27 @@ def sentenceloss(rt, re, rm, summary, encoder, decoder,
     batch_length = rt.size()[0]
     input_length = rt.size()[1]
     target_length = summary.size()[1]
-
-    encoder_outputs = Variable(torch.zeros(batch_length, MAX_LENGTH, embedding_size), requires_grad=False)
-    encoder_outputs = encoder_outputs.cuda() if use_cuda else encoder_outputs
+    
+    """
+    Added by Ken
+    Preprocessing the blocks:
+    1. save the number of blocks in each pair -> to initialize the global encoder states
+    2. save the block position for each pair
+    3. <EOB> = 4
+    """
+    BLOCK_NUMBERS = np.ones(batch_length)
+    for bi in range(batch_length):
+        blocks = 0
+        for ei in range(len(rm[bi][:])):
+            if langs['rm'].index2word[int(rm[bi][ei])] == '<EOB>':
+                BLOCK_NUMBERS[bi] += 1
+    MAX_BLOCK = int(np.max(BLOCK_NUMBERS))
+    local_encoder_outputs = Variable(torch.zeros(batch_length, MAX_LENGTH, embedding_size))
+    local_encoder_outputs = encoder_outputs.cuda() if use_cuda else local_encoder_outputs
+    # the second dimension of global encoder is the number of blocks
+    global_encoder_outputs = Variable(torch.zeros(batch_length, MAX_BLOCK, embedding_size))
+    global_encoder_outputs = global_encoder_outputs.cuda() if use_cuda else global_encoder_outputs
+    BLOCK_JUMPS = 31
 
     loss = 0
 
@@ -87,14 +118,47 @@ def sentenceloss(rt, re, rm, summary, encoder, decoder,
         # Store memory information
         for ei in range(input_length):
             encoder_outputs[:, ei] = encoder_hiddens[:, ei]
-
+        """
+        To do:
+            Hierarchical Encoder
+        """
     else:
-        encoder_hidden = encoder.initHidden(batch_length)
-        out, encoder_hidden = encoder(rt, re, rm, encoder_hidden)
-        
-        # Store memory information
-        encoder_outputs = out.permute(1,0,2)
+        """
+        Ken added:
+        Local Encoder
+            Accept input embeddings sequence.
+            local_out:
+                (seq_len, batch, hidden_size * num_directions)
+            local_encoder_hidden:
+                (num_layers * num_directions, batch, hidden_size)
+                tensor containing the hidden state for t = seq_len
+        """
+        init_local_hidden = local_encoder.initHidden(batch_length)
+        local_out, local_encoder_hidden = local_encoder(rt, re, rm, init_local_hidden)
+        """
+        Global Encoder
+            Accept {local encoder hidden state at <EOB>} as input sequence.
+            1. local_out as global_input: see dimensions above
+            2. global_input:
+                (block_numbers, batch, hidden_size * num_directions)
+            3. BLOCK_JUMPS = 31 (for each input, the <EOB> is at the index of multiple of 31)
+        """
+        global_input = Variable(torch.zeros(MAX_BLOCK, batch_length, embedding_size))
+        global_input = global_input.cuda() if use_cuda else global_input
+        for ei in range(input_length):
+            if ei % BLOCK_JUMPS == 0:
+                # map ei to block number
+                global_input[int(ei/(BLOCK_JUMPS+1)), :, :] = local_out[ei, :, :]
+        init_global_hidden = global_encoder.initHidden(batch_length)
+        global_out, global_encoder_hidden = global_encoder(global_input, init_global_hidden)
+        """
+        Store memory information
+        Unify dimension: (batch, sequence length, hidden size)
+        """
+        local_encoder_outputs = local_out.permute(1,0,2)
+        global_encoder_outputs = global_out.permute(1,0,2)
 
+    # decoder starts
     decoder_hidden = decoder.initHidden(batch_length)
     decoder_hidden[0,:,:] = out[-1,:] # might be zero
     decoder_input = Variable(torch.LongTensor(batch_length).zero_(), requires_grad=False)
@@ -113,10 +177,10 @@ def sentenceloss(rt, re, rm, summary, encoder, decoder,
 
 def addpaddings(summary):
     """A helper function to add paddings to summary.
-
     Args:
         summary: A list (batch_size) of indexing summarizes.
-
+                 [tokens]
+        padding index = 2
     Returns:
         A list (batch_size) with padding summarizes.
     """
@@ -138,13 +202,18 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
     emb = docEmbedding(langs['rt'].n_words, langs['re'].n_words,
                        langs['rm'].n_words, embedding_size)
     emb.init_weights()
-
+    # # # # # # # # # # # # # # # # # # # # # # # # #
+    # Ken edit: Hierarchical Encoder 04/01
+    #   ** Do RNN first
+    #   1. add: global_encoder = GlobalEncoderRNN(embedding_size, local_encoder)
     if encoder_style == 'LIN':
         encoder = EncoderLIN(embedding_size, emb)
     elif encoder_style == 'BiLSTM':
         encoder = EncoderBiLSTM(embedding_size, emb)
     else:
-        encoder = EncoderRNN(embedding_size, emb)
+        local_encoder = EncoderRNN(embedding_size, emb)
+        global_encoder = GlobalEncoderRNN(embedding_size)
+
 
     decoder = AttnDecoderRNN(embedding_size, langs['summary'].n_words)
 
@@ -180,6 +249,7 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
             re = addpaddings(re)
             rm = addpaddings(rm)
             summary = addpaddings(summary)
+
         
             rt = Variable(torch.LongTensor(rt), requires_grad=False)
             re = Variable(torch.LongTensor(re), requires_grad=False)
@@ -194,22 +264,25 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
             # Get the average loss on the sentences
             target_length = summary.size()[1]
 
-            loss = sentenceloss(rt, re, rm, summary, encoder, decoder,
+       
+        # Get the average loss on the sentences
+        # # # # # # # # # # # # # # # # # # # # # # # # #
+        # calculate loss of "a batch of input sequence"
+        loss = sentenceloss(rt, re, rm, summary, local_encoder, decoder,
                             loss_optimizer, criterion,
-                            embedding_size, encoder_style)
-            loss.backward()
-            torch.nn.utils.clip_grad_norm(list(encoder.parameters()) + list(decoder.parameters()), 2)
-            loss_optimizer.step()
+                            embedding_size, encoder_style, global_encoder, langs)
+        # # # # # # # # # # # # # # # # # # # # # # # # #
+        total_loss += loss
 
-            total_loss += loss.data[0] / target_length
-            # Print the information and save model
-            if iteration % get_loss == 0:
-                print("Time {}, iter {}, avg loss = {:.4f}".format(
-                    gettime(start), iteration, total_loss / get_loss))
-                total_loss = 0
-        if epo % save_model == 0:
-            torch.save(encoder.state_dict(), "models/{}_encoder_{}".format(OUTPUT_FILE, iteration))
-            torch.save(decoder.state_dict(), "models/{}_decoder_{}".format(OUTPUT_FILE, iteration))
+        # Print the information and save model
+        if iteration % get_loss == 0:
+            print("Time {}, iter {}, avg loss = {:.4f}".format(
+                gettime(start), iteration, total_loss / get_loss))
+            total_loss = 0
+
+        if iteration % save_model == 0:
+            torch.save(encoder.state_dict(), "{}_encoder_{}".format(OUTPUT_FILE, iteration))
+            torch.save(decoder.state_dict(), "{}_decoder_{}".format(OUTPUT_FILE, iteration))
             torch.save(loss_optimizer.state_dict(), "models/{}_optim_{}".format(OUTPUT_FILE, iteration))
             print("Save the model at iter {}".format(iteration))
     
