@@ -8,7 +8,7 @@ from torch import optim
 
 from preprocessing import data_iter
 from dataprepare import loaddata, data2index
-from model import docEmbedding
+from model import docEmbedding, Seq2Seq
 from model import EncoderLIN, HierarchicalEncoderRNN, EncoderBiLSTM
 from model import AttnDecoderRNN, HierarchicalDecoder
 from util import gettime, load_model, showAttention
@@ -70,17 +70,18 @@ def find_max_block_numbers(batch_length, langs, rm):
     return int(np.max(BLOCK_NUMBERS)), blocks_lens
 
 
-def sentenceloss(rt, re, rm, summary, encoder, decoder, loss_optimizer,
-                 criterion, embedding_size, encoder_style, langs):
+def sequenceloss(rt, re, rm, summary, model):
     """Function for train on sentences.
 
     This function will calculate the gradient and NLLloss on sentences,
-    , update the model, and then return the average loss.
+    and then return the loss.
 
     """
-    # Zero the gradient
-    loss_optimizer.zero_grad()
+    return model.seq_train(rt, re, rm, summary)
 
+
+def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
+                           criterion, embedding_size, langs):
     batch_length = rt.size()[0]
     input_length = rt.size()[1]
     target_length = summary.size()[1]
@@ -181,6 +182,49 @@ def sentenceloss(rt, re, rm, summary, encoder, decoder, loss_optimizer,
     return loss
 
 
+def seq_train(rt, re, rm, summary, encoder, decoder,
+              criterion, embedding_size, langs):
+    batch_length = rt.size()[0]
+    input_length = rt.size()[1]
+    target_length = summary.size()[1]
+
+    encoder_outputs = Variable(torch.zeros(batch_length, MAX_LENGTH, embedding_size))
+    encoder_outputs = encoder_outputs.cuda() if use_cuda else encoder_outputs
+
+    loss = 0
+
+    # Encoding
+    if ENCODER_STYLE == 'BiLSTM':
+        init_hidden = encoder.initHidden(batch_length)
+        encoder_hidden, encoder_hiddens = encoder(rt, re, rm, init_hidden)
+
+        # Store memory information
+        for ei in range(input_length):
+            encoder_outputs[:, ei] = encoder_hiddens[:, ei]
+
+    else:
+        encoder_hidden = encoder.initHidden(batch_length)
+        out, encoder_hidden = encoder(rt, re, rm, encoder_hidden)
+
+        # Store memory information
+        encoder_outputs = out.permute(1, 0, 2)
+
+    decoder_hidden = decoder.initHidden(batch_length)
+    decoder_hidden[0, :, :] = out[-1, :]  # might be zero
+    decoder_input = Variable(torch.LongTensor(batch_length).zero_())
+    decoder_input = decoder_input.cuda() if use_cuda else decoder_input
+
+    # Feed the target as the next input
+    for di in range(target_length):
+        decoder_output, decoder_hidden, decoder_attention = decoder(
+            decoder_input, decoder_hidden, encoder_outputs)
+
+        loss += criterion(decoder_output, summary[:, di])
+        decoder_input = summary[:, di]  # Supervised
+
+    return loss
+
+
 def add_sentence_paddings(summarizes):
     """A helper function to add paddings to sentences.
     Args:
@@ -259,10 +303,8 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
                        langs['rm'].n_words, embedding_size)
     emb.init_weights()
 
-    # # # # # # # # # # # # # # # # # # # # # # # # #
-    # Ken edit: Hierarchical Encoder 04/01
-    #   ** Do RNN first
-    #   1. add: global_encoder = GlobalEncoderRNN(embedding_size, local_encoder)
+    # Choose encoder style
+    # TODO:: Set up a choice for hierarchical or not
     if encoder_style == 'LIN':
         encoder = EncoderLIN(embedding_size, emb)
     elif encoder_style == 'BiLSTM':
@@ -272,11 +314,13 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         encoder_args = {"hidden_size": embedding_size, "local_embed": emb}
         encoder = HierarchicalEncoderRNN(**encoder_args)
 
-    # Choose decoder style
+    # Choose decoder style and training function
     if decoder_style == 'HierarchicalRNN':
         decoder = HierarchicalDecoder(embedding_size, langs['summary'].n_words)
+        train_func = Hierarchical_seq_train
     else:
         decoder = AttnDecoderRNN(embedding_size, langs['summary'].n_words)
+        train_func = seq_train
 
     # Choose optimizer
     loss_optimizer = optim.Adagrad(list(encoder.parameters()) + list(decoder.parameters()),
@@ -294,10 +338,15 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
 
     criterion = nn.NLLLoss()
 
+    # Build up the model
+    model = Seq2Seq(encoder, decoder, train_func, criterion, embedding_size, langs)
+
     total_loss = 0
     iteration = 0
     for epo in range(1, iter_time + 1):
+        # Start of an epoch
         print("Epoch #%d" % (epo))
+
         # Get data
         train_iter = data_iter(train_set, batch_size=batch_size)
         for dt in train_iter:
@@ -326,29 +375,27 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
             if use_cuda:
                 rt, re, rm, summary = rt.cuda(), re.cuda(), rm.cuda(), summary.cuda()
 
+            # Zero the gradient
+            loss_optimizer.zero_grad()
+
+            # calculate loss of "a batch of input sequence"
+            loss = sequenceloss(rt, re, rm, summary, model)
+
+            # Backpropagation
+            loss.backward()
+            torch.nn.utils.clip_grad_norm(list(model.encoder.parameters()) + list(model.decoder.parameters()), GRAD_CLIP)
+
             # Get the average loss on the sentences
             target_length = summary.size()[1]
+            total_loss += loss.data[0] / target_length
 
-        # Get the average loss on the sentences
-        # # # # # # # # # # # # # # # # # # # # # # # # #
-        # calculate loss of "a batch of input sequence"
-        loss = sentenceloss(rt, re, rm, summary, encoder, decoder, loss_optimizer,
-                            criterion, embedding_size, encoder_style, langs)
-        # # # # # # # # # # # # # # # # # # # # # # # # #
+            # Print the information and save model
+            if iteration % get_loss == 0:
+                print("Time {}, iter {}, avg loss = {:.4f}".format(
+                    gettime(start), iteration, total_loss / get_loss))
+                total_loss = 0
 
-        # Backpropagation
-        loss.backward()
-        torch.nn.utils.clip_grad_norm(list(encoder.parameters()) + list(decoder.parameters()), GRAD_CLIP)
-
-        total_loss += loss.data[0] / target_length
-
-        # Print the information and save model
-        if iteration % get_loss == 0:
-            print("Time {}, iter {}, avg loss = {:.4f}".format(
-                gettime(start), iteration, total_loss / get_loss))
-            total_loss = 0
-
-        if iteration % save_model == 0:
+        if epo % save_model == 0:
             torch.save(encoder.state_dict(),
                        "{}_encoder_{}".format(OUTPUT_FILE, iteration))
             torch.save(decoder.state_dict(),
@@ -357,7 +404,7 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
                        "models/{}_optim_{}".format(OUTPUT_FILE, iteration))
             print("Save the model at iter {}".format(iteration))
 
-    return encoder, decoder
+    return model.encoder, model.decoder
 
 
 def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
@@ -391,16 +438,16 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
     else:
         encoder_hidden = encoder.initHidden(batch_length)
         out, encoder_hidden = encoder(rt, re, rm, encoder_hidden)
-        
+
         # Store memory information
-        encoder_outputs = out.permute(1,0,2)
+        encoder_outputs = out.permute(1, 0, 2)
 
     decoder_attentions = torch.zeros(target_length, MAX_LENGTH)
 
     # Initialize the Beam
     # Each Beam cell contains [prob, route, decoder_hidden, atten]
     beams = [[0, [SOS_TOKEN], encoder_hidden, decoder_attentions]]
-    
+
     # For each step
     for di in range(target_length):
 
@@ -426,7 +473,7 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
                 decoder_input, decoder_hidden, encoder_outputs)
 
             # Get the attention vector at each prediction
-            atten[destination,:decoder_attention.shape[2]] = decoder_attention.data[0,0,:]
+            atten[destination, :decoder_attention.shape[2]] = decoder_attention.data[0, 0, :]
 
             # decode the word
             topv, topi = decoder_output.data.topk(beam_size)

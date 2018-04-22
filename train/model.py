@@ -5,11 +5,22 @@ from torch.autograd import Variable
 import torch.nn.functional as F
 
 from settings import use_cuda, MAX_LENGTH, LAYER_DEPTH
-"""
-TODO:
-    Rewrite a global and local encoder by modifying its constructor
-    and forward functino
-"""
+
+
+class Seq2Seq(object):
+    def __init__(self, encoder, decoder, train_func, criterion, embedding_size, langs):
+        self.encoder = encoder
+        self.decoder = decoder
+        self.train_func = train_func
+        self.criterion = criterion
+        self.embedding_size = embedding_size
+        self.langs = langs
+
+    def seq_train(self, rt, re, rm, summary):
+        """The function to calculate the loss on one batch."""
+        return self.train_func(rt, re, rm, summary,
+                               self.encoder, self.decoder,
+                               self.criterion, self.embedding_size, self.langs)
 
 
 class docEmbedding(nn.Module):
@@ -87,7 +98,7 @@ class GlobalEncoderLIN(nn.Module):
     """
     Global Encoder:
         h_b_g = f(h_(b-1)_g, h_b_l)
-        receives: 
+        receives:
             1. last time stamp in for a block at local hidden state
             2. previous time stamp of global hidden state
     """
@@ -155,10 +166,7 @@ class EncoderRNN(nn.Module):
         else:
             return result
 
-"""
-Global EncoderRNN:
-Ken add: 04/04/2018
-"""
+
 class GlobalEncoderRNN(nn.Module):
     """
     Global Encoder:
@@ -226,53 +234,29 @@ class EncoderBiLSTM(nn.Module):
 
 
 class AttnDecoderRNN(nn.Module):
-    def __init__(self, hidden_size, output_size, max_length=MAX_LENGTH, n_layers=LAYER_DEPTH, dropout_p=0.5):
+    def __init__(self, hidden_size, output_size, n_layers=LAYER_DEPTH, dropout_p=0.5):
         super(AttnDecoderRNN, self).__init__()
         self.hidden_size = hidden_size
         self.output_size = output_size
         self.n_layers = n_layers
         self.dropout_p = dropout_p
-        self.max_length = max_length
 
         self.embedding = nn.Embedding(self.output_size, self.hidden_size)
-        self.attn = nn.Linear(self.hidden_size * 2, self.max_length)
-        self.attn_combine = nn.Linear(self.hidden_size * 2, self.hidden_size)
-        self.dropout = nn.Dropout(self.dropout_p)
-        # self.grus = []
-        for i in range(self.n_layers):
-            # self.grus.append(nn.GRUCell(hidden_size, hidden_size))
-            self.add_module("gru" + str(i), nn.GRUCell(hidden_size, hidden_size))
-        self.out = nn.Linear(self.hidden_size, self.output_size)
+        self.attn = Attn(hidden_size)
+        self.gru = nn.GRU(hidden_size * 2, hidden_size, n_layers, dropout=dropout_p)
+        self.out = nn.Linear(self.hidden_size * 2, self.output_size)
 
     def forward(self, input, hidden, encoder_outputs):
-        embedded = self.embedding(input)
-        embedded = self.dropout(embedded)
 
-        # inp = embedded.permute(1,0,2)
-        attn_weights = F.softmax(
-            self.attn(torch.cat((embedded, hidden[-1, :, :]), dim=1)))
+        attn_weights = self.attn(hidden[-1, :, :], encoder_outputs)
+        context = torch.bmm(attn_weights, encoder_outputs)
+        output = torch.cat((input, context.squeeze(1)), dim=1)
 
-        attn_weights = attn_weights.unsqueeze(1)
-        attn_weights = attn_weights[:, :, :encoder_outputs.size()[1]]
+        # To align with the library standard (seq_len, batch, input_size)
+        output = output.unsqueeze(0)
+        output, nh = self.gru(output, hidden)
 
-        attn_applied = torch.bmm(attn_weights, encoder_outputs)
-        attn_applied = attn_applied.squeeze(1)
-
-        output = torch.cat((embedded, attn_applied), dim=1)
-        output = self.attn_combine(output)
-
-        nh = Variable(torch.zeros(hidden.size()), requires_grad=False)
-        if use_cuda:
-            nh.cuda()
-
-        for i in range(self.n_layers):
-            output = F.relu(output)
-            layer_fnc = getattr(self, "gru" + str(i))
-            output = layer_fnc(output, hidden[i, :, :])
-            nh[i, :, :] = output
-
-        output = F.log_softmax(self.out(output))
-        return output, nh, attn_weights
+        return output, nh, context, attn_weights
 
     def initHidden(self, batch_size):
         result = Variable(torch.zeros(self.n_layers, batch_size, self.hidden_size), requires_grad=False)
