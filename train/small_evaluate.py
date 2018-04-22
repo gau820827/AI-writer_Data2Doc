@@ -14,8 +14,8 @@ emb = docEmbedding(langs['rt'].n_words, langs['re'].n_words,
                    langs['rm'].n_words, embedding_size)
 emb.init_weights()
 
-encoder_src = './default_encoder_10000'
-decoder_src = './default_decoder_5000'
+encoder_src = './models/long4_encoder_2120'
+decoder_src = './models/long4_decoder_2120'
 
 encoder_style = None
 

@@ -86,16 +86,19 @@ def sentenceloss(rt, re, rm, summary, encoder, decoder, loss_optimizer,
     batch_length = rt.size()[0]
     input_length = rt.size()[1]
     target_length = summary.size()[1]
+
     # MAX_BLOCK is the number of global hidden states
     MAX_BLOCK = find_max_block_numbers(batch_length, langs, rm)
     BLOCK_JUMPS = 31
 
     LocalEncoder = encoder.LocalEncoder
     GlobalEncoder = encoder.GlobalEncoder
+
     local_encoder_outputs = Variable(torch.zeros(batch_length, MAX_LENGTH, embedding_size))
     local_encoder_outputs = encoder_outputs.cuda() if use_cuda else local_encoder_outputs
     global_encoder_outputs = Variable(torch.zeros(batch_length, MAX_BLOCK, embedding_size))
     global_encoder_outputs = global_encoder_outputs.cuda() if use_cuda else global_encoder_outputs
+
     loss = 0
 
     # Encoding
@@ -140,7 +143,7 @@ def sentenceloss(rt, re, rm, summary, encoder, decoder, loss_optimizer,
     # decoder starts
     decoder_hidden = decoder.initHidden(batch_length)
     decoder_hidden[0, :, :] = out[-1, :]  # might be zero
-    decoder_input = Variable(torch.LongTensor(batch_length).zero_())
+    decoder_input = Variable(torch.LongTensor(batch_length).zero_(), requires_grad=False)
     decoder_input = decoder_input.cuda() if use_cuda else decoder_input
 
     # Feed the target as the next input
@@ -151,12 +154,8 @@ def sentenceloss(rt, re, rm, summary, encoder, decoder, loss_optimizer,
         loss += criterion(decoder_output, summary[:, di])
         decoder_input = summary[:, di]  # Supervised
 
-    loss.backward()
 
-    loss_optimizer.step()
-
-    return loss.data[0] / target_length
-
+    return loss
 
 def addpaddings(summary):
     """A helper function to add paddings to summary.
@@ -180,7 +179,6 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
     # Set the timer
     start = time.time()
 
-    train_iter = data_iter(train_set, batch_size=batch_size)
 
     # Initialize the model
     emb = docEmbedding(langs['rt'].n_words, langs['re'].n_words,
@@ -198,6 +196,9 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
 
     decoder = AttnDecoderRNN(embedding_size, langs['summary'].n_words)
 
+    # Choose optimizer
+    #decoder_optimizer = optim.Adagrad(decoder.parameters(), lr=learning_rate, lr_decay=0, weight_decay=0)
+    loss_optimizer = optim.Adagrad(list(encoder.parameters()) + list(decoder.parameters()), lr=learning_rate, lr_decay=0, weight_decay=0)
     if use_cuda:
         emb.cuda()
         encoder.cuda()
@@ -206,6 +207,7 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
     if use_model is not None:
         encoder = load_model(encoder, use_model[0])
         decoder = load_model(decoder, use_model[1])
+        loss_optimizer.load_state_dict(torch.load(use_model[2]))
 
     # Choose optimizer
     # Ken added opitimzer
@@ -216,28 +218,37 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
     criterion = nn.NLLLoss()
 
     total_loss = 0
-
-    for iteration in range(1, iter_time + 1):
+    iteration = 0
+    for epo in range(1, iter_time + 1):
+        print("Epoch #%d" % (epo))
         # Get data
-        data, idx_data = get_batch(next(train_iter))
-        rt, re, rm, summary = idx_data
+        train_iter = data_iter(train_set, batch_size=batch_size)
+        for dt in train_iter:
+            iteration += 1
+            data, idx_data = get_batch(dt)
+            rt, re, rm, summary = idx_data
+        
+            # Add paddings
+            rt = addpaddings(rt)
+            re = addpaddings(re)
+            rm = addpaddings(rm)
+            summary = addpaddings(summary)
 
-        # Add paddings
-        rt = addpaddings(rt)
-        re = addpaddings(re)
-        rm = addpaddings(rm)
-        summary = addpaddings(summary)
+        
+            rt = Variable(torch.LongTensor(rt), requires_grad=False)
+            re = Variable(torch.LongTensor(re), requires_grad=False)
+            rm = Variable(torch.LongTensor(rm), requires_grad=False)
 
-        rt = Variable(torch.LongTensor(rt))
-        re = Variable(torch.LongTensor(re))
-        rm = Variable(torch.LongTensor(rm))
+            # For Decoding
+            summary = Variable(torch.LongTensor(summary), requires_grad=False)
 
-        # For Decoding
-        summary = Variable(torch.LongTensor(summary))
+            if use_cuda:
+                rt, re, rm, summary = rt.cuda(), re.cuda(), rm.cuda(), summary.cuda()
 
-        if use_cuda:
-            rt, re, rm, summary = rt.cuda(), re.cuda(), rm.cuda(), summary.cuda()
+            # Get the average loss on the sentences
+            target_length = summary.size()[1]
 
+       
         # Get the average loss on the sentences
         # # # # # # # # # # # # # # # # # # # # # # # # #
         # calculate loss of "a batch of input sequence"
@@ -257,8 +268,10 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
                        "{}_encoder_{}".format(OUTPUT_FILE, iteration))
             torch.save(decoder.state_dict(), 
                        "{}_decoder_{}".format(OUTPUT_FILE, iteration))
+            torch.save(loss_optimizer.state_dict(),
+                       "models/{}_optim_{}".format(OUTPUT_FILE, iteration))
             print("Save the model at iter {}".format(iteration))
-
+    
     return encoder, decoder
 
 
@@ -292,18 +305,17 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
 
     else:
         encoder_hidden = encoder.initHidden(batch_length)
-        for ei in range(input_length):
-            encoder_hidden = encoder(rt[:, ei], re[:, ei], rm[:, ei], encoder_hidden)
-
-            # Store memory information
-            encoder_outputs[:, ei] = encoder_hidden
+        out, encoder_hidden = encoder(rt, re, rm, encoder_hidden)
+        
+        # Store memory information
+        encoder_outputs = out.permute(1,0,2)
 
     decoder_attentions = torch.zeros(target_length, MAX_LENGTH)
 
     # Initialize the Beam
     # Each Beam cell contains [prob, route, decoder_hidden, atten]
     beams = [[0, [SOS_TOKEN], encoder_hidden, decoder_attentions]]
-
+    
     # For each step
     for di in range(target_length):
 
@@ -329,7 +341,7 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
                 decoder_input, decoder_hidden, encoder_outputs)
 
             # Get the attention vector at each prediction
-            atten[destination] = decoder_attention.data[0][0]
+            atten[destination,:decoder_attention.shape[2]] = decoder_attention.data[0,0,:]
 
             # decode the word
             topv, topi = decoder_output.data.topk(beam_size)
@@ -411,9 +423,9 @@ def showconfig():
 
 
 def main():
+    print("Start Training")
     # Display Configuration
     showconfig()
-
     # Default parameter
     embedding_size = EMBEDDING_SIZE
     learning_rate = LR
@@ -425,7 +437,7 @@ def main():
     train_data = data2index(train_data, train_lang)
     encoder, decoder = train(train_data, train_lang,
                              embedding_size=embedding_size, learning_rate=learning_rate,
-                             iter_time=train_iter_time, batch_size=batch_size)
+                             iter_time=train_iter_time, batch_size=batch_size, use_model=USE_MODEL)
 
     # For evaluation
     valid_data, _ = loaddata(file_loc, 'valid')
