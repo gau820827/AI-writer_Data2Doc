@@ -172,11 +172,24 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
                 g_input, gnh, global_encoder_outputs)
 
         # Feed the target as the next input
-        l_output, lnh, l_context, l_attn_weights = local_decoder(
+        l_output, lnh, l_context, l_attn_weights, pgen = local_decoder(
             l_input, lnh, g_attn_weights, local_encoder_outputs, blocks_len)
 
-        loss += criterion(l_output, summary[:, di])
+        idx = 0
+        l_output = l_output.exp()
+        prob = Variable(torch.zeros(l_output.shape), requires_grad=False).cuda()
+        if use_cuda:
+            prob = prob.cuda()
+        for l_attn in l_attn_weights:
+            for i in range(l_attn.shape[2]):
+                prob[:,rm[:,idx+i]] += (1-pgen)*l_attn[:,0,i]
+            idx += l_attn.shape[2]
 
+        l_output_new = l_output + prob
+
+        l_output_new = l_output_new.log()
+        
+        loss += criterion(l_output_new, summary[:, di])
         g_input = lnh[-1, :, :]
         l_input = summary[:, di]  # Supervised
 
