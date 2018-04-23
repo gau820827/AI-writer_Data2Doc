@@ -358,8 +358,8 @@ class LocalAttnDecoderRNN(nn.Module):
 
         # blocks is a list storing tth for each block
         batch_size, seq_len, hidden_size = encoder_outputs.size()
-        attn_weights = [Variable(torch.zeros(batch_size, hidden_size)) for i in range(len(blocks))]
-        block_context = [Variable(torch.zeros(batch_size, hidden_size)) for i in range(len(blocks))]
+        attn_weights = [Variable(torch.zeros(batch_size, hidden_size), requires_grad=False) for i in range(len(blocks))]
+        block_context = [Variable(torch.zeros(batch_size, hidden_size), requires_grad=False) for i in range(len(blocks))]
 
         if use_cuda:
             for idm in range(len(blocks)):
