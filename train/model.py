@@ -82,9 +82,18 @@ class EncoderLIN(nn.Module):
 
     def forward(self, rt, re, rm, hidden):
         embedded = self.embedding(rt, re, rm)
-        output = torch.cat((embedded, hidden), dim=1)
-        output = self.avgpool(output.view(-1, 1, 2 * self.hidden_size))
-        return output.squeeze(1)
+
+        hiddens = Variable(torch.zeros(rt.size()[1], rt.size()[0], self.hidden_size))
+        hiddens = hiddens.cuda() if use_cuda else hiddens
+
+        output = hidden
+
+        for ei in range(rt.size()[1]):
+            output = torch.cat((embedded[:, ei, :], output), dim=1)
+            output = self.avgpool(output.unsqueeze(1))
+            output = output.squeeze(1)
+            hiddens[ei, :, :] = output
+        return hiddens, output.unsqueeze(0)
 
     def initHidden(self, batch_size):
         result = Variable(torch.zeros(batch_size, self.hidden_size))
