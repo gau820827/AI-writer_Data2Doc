@@ -357,12 +357,12 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         emb.cuda()
         encoder.cuda()
         decoder.cuda()
-
     
     # Choose optimizer
     #loss_optimizer = optim.Adagrad(list(encoder.parameters()) + list(decoder.parameters()),
     #                               lr=learning_rate, lr_decay=0, weight_decay=0)
     loss_optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=learning_rate)
+
 
     if use_model is not None:
         encoder = load_model(encoder, use_model[0])
