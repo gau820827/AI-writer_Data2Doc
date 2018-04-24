@@ -194,7 +194,7 @@ class GlobalEncoderRNN(nn.Module):
         return output, hidden
 
     def initHidden(self, batch_size):
-        result = Variable(torch.zeros(self.n_layers, batch_size, self.hidden_size))
+        result = Variable(torch.zeros(self.n_layers, batch_size, self.hidden_size), requires_grad=False)
 
         if use_cuda:
             return result.cuda()
@@ -225,8 +225,8 @@ class EncoderBiLSTM(nn.Module):
         return output, torch.transpose(bilstm_outs, 0, 1)
 
     def initHidden(self, batch_size):
-        forward = Variable(torch.zeros(2 * self.n_layers, batch_size, self.hidden_size // 2))
-        backward = Variable(torch.zeros(2 * self.n_layers, batch_size, self.hidden_size // 2))
+        forward = Variable(torch.zeros(2 * self.n_layers, batch_size, self.hidden_size // 2), requires_grad=False)
+        backward = Variable(torch.zeros(2 * self.n_layers, batch_size, self.hidden_size // 2), requires_grad=False)
         if use_cuda:
             return (forward.cuda(), backward.cuda())
         else:
@@ -249,7 +249,7 @@ class PGenLayer(nn.Module):
         return F.sigmoid(self.lin(input))
 
 class AttnDecoderRNN(nn.Module):
-    def __init__(self, hidden_size, output_size, n_layers=LAYER_DEPTH, dropout_p=0.5, copy=False):
+    def __init__(self, hidden_size, output_size, n_layers=LAYER_DEPTH, dropout_p=0.1, copy=False):
         super(AttnDecoderRNN, self).__init__()
         self.hidden_size = hidden_size
         self.output_size = output_size
@@ -279,8 +279,6 @@ class AttnDecoderRNN(nn.Module):
         output, nh = self.gru(output, hidden)
 
         output = output.squeeze(0)
-        print(output.shape)
-        exit(1)
         pgen = self.pgen( embedded, output, context)
 
         # Output the final distribution
@@ -316,7 +314,7 @@ class GlobalAttnDecoderRNN(nn.Module):
     , and C_{n}^{g}=\sum_{j=1}^{|b|}\beta_{n,j}h_{j}^{g}
 
     """
-    def __init__(self, hidden_size, n_layers=LAYER_DEPTH, dropout_p=0.5):
+    def __init__(self, hidden_size, n_layers=LAYER_DEPTH, dropout_p=0.1):
         super(GlobalAttnDecoderRNN, self).__init__()
         self.hidden_size = hidden_size
         self.n_layers = n_layers
@@ -339,7 +337,7 @@ class GlobalAttnDecoderRNN(nn.Module):
         return output, nh, context, attn_weights
 
     def initHidden(self, batch_size):
-        result = Variable(torch.zeros(self.n_layers, batch_size, self.hidden_size))
+        result = Variable(torch.zeros(self.n_layers, batch_size, self.hidden_size), requires_grad=False)
         if use_cuda:
             return result.cuda()
         else:
@@ -355,7 +353,7 @@ class LocalAttnDecoderRNN(nn.Module):
 
     """
     def __init__(self, hidden_size, output_size, max_length=MAX_LENGTH,
-                 n_layers=LAYER_DEPTH, dropout_p=0.5, copy=True):
+                 n_layers=LAYER_DEPTH, dropout_p=0.1, copy=True):
         super(LocalAttnDecoderRNN, self).__init__()
         self.hidden_size = hidden_size
         self.output_size = output_size
@@ -372,8 +370,8 @@ class LocalAttnDecoderRNN(nn.Module):
         self.gru = nn.GRU(hidden_size * 2, hidden_size, n_layers, dropout=dropout_p)
 
         self.out = nn.Linear(self.hidden_size * 2, self.output_size)
-
-        self.pgen = PGenLayer(self.hidden_size, self.hidden_size, self.hidden_size)
+        if self.copy:
+            self.pgen = PGenLayer(self.hidden_size, self.hidden_size, self.hidden_size)
 
     def forward(self, input, hidden, block_attn_weights, encoder_outputs, blocks):
         embedded = self.embedding(input)
@@ -381,9 +379,9 @@ class LocalAttnDecoderRNN(nn.Module):
 
         # blocks is a list storing tth for each block
         batch_size, seq_len, hidden_size = encoder_outputs.size()
-        #attn_weights = [Variable(torch.zeros(batch_size, hidden_size)) for i in range(len(blocks))]
+        #attn_weights = [Variable(torch.zeros(batch_size, hidden_size), requires_grad=False) for i in range(len(blocks))]
         attn_weights = [0 for i in range(len(blocks))]
-        #block_context = [Variable(torch.zeros(batch_size, hidden_size)) for i in range(len(blocks))]
+        #block_context = [Variable(torch.zeros(batch_size, hidden_size), requires_grad=False) for i in range(len(blocks))]
         block_context = [0 for i in range(len(blocks))]
 
         #if use_cuda:
@@ -434,13 +432,14 @@ class LocalAttnDecoderRNN(nn.Module):
 
         if self.copy:
             pgen = self.pgen(embedded, output, context)
-
-
-        output = F.log_softmax(self.out(torch.cat((output, context), 1))) + pgen.log()
+            output = F.log_softmax(self.out(torch.cat((output, context), 1))) + pgen.log()
+        else:
+            pgen = Variable(torch.zeros(1,1)).cuda() if use_cuda else Variable(torch.zeros(1,1))
+            output = F.log_softmax(self.out(torch.cat((output, context), 1)))
         return output, nh, context, attn_weights, pgen
 
     def initHidden(self, batch_size):
-        result = Variable(torch.zeros(self.n_layers, batch_size, self.hidden_size))
+        result = Variable(torch.zeros(self.n_layers, batch_size, self.hidden_size), requires_grad=False)
         if use_cuda:
             return result.cuda()
         else:
@@ -464,7 +463,7 @@ class Attn(nn.Module):
         # print(encoder_outputs.size())
 
         # Create variable to store attention energies
-        attn_energies = Variable(torch.zeros(batch_size, seq_len))  # B x 1 x S
+        attn_energies = Variable(torch.zeros(batch_size, seq_len), requires_grad=False)  # B x 1 x S
         if use_cuda:
             attn_energies = attn_energies.cuda()
 

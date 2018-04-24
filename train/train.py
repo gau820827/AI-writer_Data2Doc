@@ -176,18 +176,21 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
             l_input, lnh, g_attn_weights, local_encoder_outputs, blocks_len)
 
         idx = 0
-        l_output = l_output.exp()
-        prob = Variable(torch.zeros(l_output.shape), requires_grad=False).cuda()
-        if use_cuda:
-            prob = prob.cuda()
-        for l_attn in l_attn_weights:
-            for i in range(l_attn.shape[2]):
-                prob[:,rm[:,idx+i]] += (1-pgen)*l_attn[:,0,i]
-            idx += l_attn.shape[2]
+        if local_decoder.copy:
+            l_output = l_output.exp()
+            prob = Variable(torch.zeros(l_output.shape), requires_grad=False)
+            prob = prob.cuda() if use_cuda else prob
+            if use_cuda:
+                prob = prob.cuda()
+            for l_attn in l_attn_weights:
+                for i in range(l_attn.shape[2]):
+                    prob[:,rm[:,idx+i]] += (1-pgen)*l_attn[:,0,i]
+                idx += l_attn.shape[2]
+            l_output_new = l_output + prob
 
-        l_output_new = l_output + prob
-
-        l_output_new = l_output_new.log()
+            l_output_new = l_output_new.log()
+        else:
+            l_output_new = l_output
         
         loss += criterion(l_output_new, summary[:, di])
         g_input = lnh[-1, :, :]
@@ -339,10 +342,6 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         decoder = AttnDecoderRNN(embedding_size, langs['summary'].n_words)
         train_func = Plain_seq_train
 
-    # Choose optimizer
-    loss_optimizer = optim.Adagrad(list(encoder.parameters()) + list(decoder.parameters()),
-                                   lr=learning_rate, lr_decay=0, weight_decay=0)
-
     if use_cuda:
         emb.cuda()
         encoder.cuda()
@@ -352,6 +351,13 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         encoder = load_model(encoder, use_model[0])
         decoder = load_model(decoder, use_model[1])
         loss_optimizer.load_state_dict(torch.load(use_model[2]))
+
+    # Choose optimizer
+    loss_optimizer = optim.Adagrad(list(encoder.parameters()) + list(decoder.parameters()),
+                                   lr=learning_rate, lr_decay=0, weight_decay=0)
+    #loss_optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=learning_rate)
+
+    
 
     criterion = nn.NLLLoss()
 
@@ -401,6 +407,7 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
             # Backpropagation
             loss.backward()
             torch.nn.utils.clip_grad_norm(list(model.encoder.parameters()) + list(model.decoder.parameters()), GRAD_CLIP)
+            loss_optimizer.step()
 
             # Get the average loss on the sentences
             target_length = summary.size()[1]
