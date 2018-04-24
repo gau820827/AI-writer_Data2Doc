@@ -4,7 +4,7 @@ import torch.nn as nn
 from torch.autograd import Variable
 import torch.nn.functional as F
 
-from settings import use_cuda, MAX_LENGTH, LAYER_DEPTH
+from settings import use_cuda, MAX_LENGTH, LAYER_DEPTH, TOCOPY
 
 
 class Seq2Seq(object):
@@ -249,7 +249,7 @@ class PGenLayer(nn.Module):
         return F.sigmoid(self.lin(input))
 
 class AttnDecoderRNN(nn.Module):
-    def __init__(self, hidden_size, output_size, n_layers=LAYER_DEPTH, dropout_p=0.1, copy=False):
+    def __init__(self, hidden_size, output_size, n_layers=LAYER_DEPTH, dropout_p=0.1, copy=TOCOPY):
         super(AttnDecoderRNN, self).__init__()
         self.hidden_size = hidden_size
         self.output_size = output_size
@@ -261,7 +261,8 @@ class AttnDecoderRNN(nn.Module):
         self.attn = Attn(hidden_size)
         self.gru = nn.GRU(hidden_size * 2, hidden_size, n_layers, dropout=dropout_p)
         self.out = nn.Linear(self.hidden_size * 2, self.output_size)
-        self.pgen = PGenLayer(self.hidden_size, self.hidden_size, self.hidden_size)
+        if self.copy:
+            self.pgen = PGenLayer(self.hidden_size, self.hidden_size, self.hidden_size)
 
     def forward(self, input, hidden, encoder_outputs):
         embedded = self.embedding(input)
@@ -279,12 +280,15 @@ class AttnDecoderRNN(nn.Module):
         output, nh = self.gru(output, hidden)
 
         output = output.squeeze(0)
-        pgen = self.pgen( embedded, output, context)
-
+        if self.copy:
+            pgen = self.pgen( embedded, output, context)
+            output = F.log_softmax(self.out(torch.cat((output, context), 1))) + pgen.log()
+        else:
+            pgen = 0
         # Output the final distribution
-        output = F.log_softmax(self.out(torch.cat((output, context), 1)))
+            output = F.log_softmax(self.out(torch.cat((output, context), 1)))
 
-        return output, nh, context, attn_weights
+        return output, nh, context, attn_weights, pgen
 
     def initHidden(self, batch_size):
         result = Variable(torch.zeros(self.n_layers, batch_size, self.hidden_size), requires_grad=False)
@@ -353,7 +357,7 @@ class LocalAttnDecoderRNN(nn.Module):
 
     """
     def __init__(self, hidden_size, output_size, max_length=MAX_LENGTH,
-                 n_layers=LAYER_DEPTH, dropout_p=0.1, copy=True):
+                 n_layers=LAYER_DEPTH, dropout_p=0.1, copy=TOCOPY):
         super(LocalAttnDecoderRNN, self).__init__()
         self.hidden_size = hidden_size
         self.output_size = output_size
