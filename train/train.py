@@ -236,10 +236,21 @@ def Plain_seq_train(rt, re, rm, summary, encoder, decoder,
 
     # Feed the target as the next input
     for di in range(target_length):
-        decoder_output, decoder_hidden, decoder_context, decoder_attention = decoder(
+        decoder_output, decoder_hidden, decoder_context, decoder_attention, pgen = decoder(
             decoder_input, decoder_hidden, encoder_outputs)
+            
+        if decoder.copy:
+            decoder_output = decoder_output.exp()
+            prob = Variable(torch.zeros(decoder_output.shape), requires_grad=False)
+            prob = prob.cuda() if use_cuda else prob
+            for i in range(decoder_attention.shape[2]):
+                prob[:,rm[:,i]] += (1-pgen)*decoder_attention[:,0,i]
 
-        loss += criterion(decoder_output, summary[:, di])
+            decoder_output_new = decoder_output + prob
+            decoder_output_new = decoder_output_new.log()
+        else:
+            decoder_output_new = decoder_output
+        loss += criterion(decoder_output_new, summary[:, di])
         decoder_input = summary[:, di]  # Supervised
 
     return loss
@@ -346,10 +357,12 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         emb.cuda()
         encoder.cuda()
         decoder.cuda()
-
+    
     # Choose optimizer
-    loss_optimizer = optim.Adagrad(list(encoder.parameters()) + list(decoder.parameters()),
-                                   lr=learning_rate, lr_decay=0, weight_decay=0)
+    #loss_optimizer = optim.Adagrad(list(encoder.parameters()) + list(decoder.parameters()),
+    #                               lr=learning_rate, lr_decay=0, weight_decay=0)
+    loss_optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=learning_rate)
+
 
     # loss_optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=learning_rate)
 
@@ -362,6 +375,10 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
 
     # Build up the model
     model = Seq2Seq(encoder, decoder, train_func, criterion, embedding_size, langs)
+
+    print(encoder)
+    print(decoder)
+    print(loss_optimizer)
 
     total_loss = 0
     iteration = 0
@@ -420,11 +437,11 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
 
         if epo % save_model == 0:
             torch.save(encoder.state_dict(),
-                       "{}_encoder_{}".format(OUTPUT_FILE, iteration))
+                    "{}_encoder_{}".format(OUTPUT_FILE, iteration))
             torch.save(decoder.state_dict(),
-                       "{}_decoder_{}".format(OUTPUT_FILE, iteration))
+                    "{}_decoder_{}".format(OUTPUT_FILE, iteration))
             torch.save(loss_optimizer.state_dict(),
-                       "models/{}_optim_{}".format(OUTPUT_FILE, iteration))
+                    "models/{}_optim_{}".format(OUTPUT_FILE, iteration))
             print("Save the model at iter {}".format(iteration))
 
     return model.encoder, model.decoder
@@ -589,7 +606,7 @@ def main():
     batch_size = BATCH_SIZE
 
     # For Training
-    train_data, train_lang = loaddata(file_loc, 'train')
+    train_data, train_lang = loaddata(file_loc, 'train', 200)
     train_data = data2index(train_data, train_lang)
     encoder, decoder = train(train_data, train_lang,
                              embedding_size=embedding_size, learning_rate=learning_rate,
