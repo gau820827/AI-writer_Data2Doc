@@ -3,7 +3,7 @@ import torch
 file_loc = '../boxscore-data/rotowire/'
 use_cuda = torch.cuda.is_available()
 MAX_LENGTH = 683
-LAYER_DEPTH = 2
+LAYER_DEPTH = 1
 MAX_SENTENCES = None
 USE_MODEL = None
 #USE_MODEL = ['./models/clipped_encoder_25440', './models/clipped_decoder_25440']
@@ -23,8 +23,8 @@ SAVE_MODEL = 5
 # ENCODER_STYLE = 'BiLSTM'
 ENCODER_STYLE = 'RNN'
 DECODER_STYLE = 'HierarchicalRNN'
-# DECODER_STYLE = 'RNN'
-OUTPUT_FILE = 'newLoss'
+#DECODER_STYLE = 'RNN'
+OUTPUT_FILE = 'copy'
 USE_MODEL = None
 
 # DATA PREPROCESSING

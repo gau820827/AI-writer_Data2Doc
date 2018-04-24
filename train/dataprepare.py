@@ -74,6 +74,8 @@ def readLang(data_set):
             rt.addword(triplet[0])
             re.addword(triplet[1])
             rm.addword(triplet[2])
+            summarize.addword(triplet[2])
+    for v in data_set:    
         for word in v.summary:
             # summary
             summarize.addword(word)
