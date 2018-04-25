@@ -61,7 +61,7 @@ def readfile(filename):
     result = []
     with open(filename, 'r') as f:
         data = json.load(f)
-        for d in data:
+        for d in data[:12]:
             # # # # # # # # # # # # #
             # Added by Ken:
             #   data:  a list of dictionary containing each game information
@@ -109,6 +109,16 @@ def doc2vec(doc):
                      'BLK': { player_number: value, player_number: value .... }
                     }
                 }
+            The list of keys:
+                home_name
+                box_score
+                home_city
+                vis_name
+                summary
+                vis_line
+                vis_city
+                day
+                home_line
         Return:
             A list of triplets indication the box score relationship
             [('TO', 'Ron Baker', 'N/A'), ('FG3A', 'Isaiah Thomas', '13'), ...]
@@ -135,25 +145,29 @@ def doc2vec(doc):
                 new_triplets.append((_type, entity, _type_dic))
         return new_triplets
 
-    for k, v in doc.items():
-        if k in ['vis_line', 'home_line']:
-            ignore = ['TEAM-NAME']
-            title = 'TEAM-NAME'
+    # Read the keys in the doc
+    keys = ['box_score', 'home_name', 'home_city', 'vis_name',
+            'vis_city', 'home_line', 'vis_line']
+
+    for k in keys:
+        if k == 'box_score':
+            ignore = ['FIRST_NAME', 'SECOND_NAME', 'PLAYER_NAME']
+            title = 'PLAYER_NAME'
             new_triplets = maketriplets(doc, k, ignore, title)
             triplets += new_triplets
 
-        elif k == 'box_score':
-            ignore = ['FIRST_NAME', 'SECOND_NAME', 'PLAYER_NAME']
-            title = 'PLAYER_NAME'
+        elif k in ['vis_line', 'home_line']:
+            ignore = ['TEAM-NAME']
+            title = 'TEAM-NAME'
             new_triplets = maketriplets(doc, k, ignore, title)
             triplets += new_triplets
 
         # Home or Away
         else:
             if 'name' in k:
-                new_triplets = [('name', k, v)]
+                new_triplets = [('name', k, doc[k])]
             elif 'city' in k:
-                new_triplets = [('city', k, v)]
+                new_triplets = [('city', k, doc[k])]
             else:
                 continue
             triplets += new_triplets
