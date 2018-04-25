@@ -3,8 +3,10 @@ import torch
 file_loc = '../boxscore-data/rotowire/'
 use_cuda = torch.cuda.is_available()
 MAX_LENGTH = 683
+#MAX_LENGTH = 8
 LAYER_DEPTH = 2
-MAX_SENTENCES = None
+#MAX_SENTENCES = None
+MAX_SENTENCES = 5
 USE_MODEL = None
 #USE_MODEL = ['./models/clipped_encoder_25440', './models/clipped_decoder_25440']
 # USE_MODEL = ['./models/long3_encoder_36040',
@@ -12,9 +14,9 @@ USE_MODEL = None
              # './models/long3_optim_36040']
 # Parameter for training
 EMBEDDING_SIZE = 600
-LR = 0.003
+LR = 0.001
 ITER_TIME = 220
-BATCH_SIZE = 1
+BATCH_SIZE = 8
 GRAD_CLIP = 5
 
 # Parameter for display
@@ -24,7 +26,7 @@ ENCODER_STYLE = 'BiLSTM'
 #ENCODER_STYLE = 'RNN'
 #DECODER_STYLE = 'HierarchicalRNN'
 DECODER_STYLE = 'RNN'
-OUTPUT_FILE = 'copy'
+OUTPUT_FILE = 'test_b8_max5'
 USE_MODEL = None
 TOCOPY = True
 

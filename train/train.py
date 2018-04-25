@@ -17,7 +17,7 @@ from util import PriorityQueue
 from settings import file_loc, use_cuda, MAX_LENGTH, USE_MODEL
 from settings import EMBEDDING_SIZE, LR, ITER_TIME, BATCH_SIZE, GRAD_CLIP
 from settings import MAX_SENTENCES, ENCODER_STYLE, DECODER_STYLE
-from settings import GET_LOSS, SAVE_MODEL, OUTPUT_FILE
+from settings import GET_LOSS, SAVE_MODEL, OUTPUT_FILE, TOCOPY
 
 import numpy as np
 
@@ -108,8 +108,7 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
         encoder_hidden, encoder_hiddens = encoder(rt, re, rm, init_hidden)
 
         # Store memory information
-        for ei in range(input_length):
-            encoder_outputs[:, ei] = encoder_hiddens[:, ei]
+        encoder_outputs[:, :input_length] = encoder_hiddens[:, :input_length]
         """
         To do:
             Hierarchical Encoder
@@ -216,8 +215,7 @@ def Plain_seq_train(rt, re, rm, summary, encoder, decoder,
         encoder_hidden, encoder_hiddens = encoder(rt, re, rm, init_hidden)
 
         # Store memory information
-        for ei in range(input_length):
-            encoder_outputs[:, ei] = encoder_hiddens[:, ei]
+        encoder_outputs[:, :input_length] = encoder_hiddens[:, :input_length]
 
     else:
         encoder_hidden = encoder.initHidden(batch_length)
@@ -240,11 +238,21 @@ def Plain_seq_train(rt, re, rm, summary, encoder, decoder,
             decoder_input, decoder_hidden, encoder_outputs)
             
         if decoder.copy:
-            decoder_output = decoder_output.exp()
             prob = Variable(torch.zeros(decoder_output.shape), requires_grad=False)
             prob = prob.cuda() if use_cuda else prob
-            for i in range(decoder_attention.shape[2]):
-                prob[:,rm[:,i]] += (1-pgen)*decoder_attention[:,0,i]
+            print(rm)
+            print(decoder_attention)
+            for j in range(prob.shape[0]):
+                idxes = rm[j,:]
+                print(idxes)
+                for i in range(decoder_attention.shape[2]):
+                    prob[j, idxes[i]] += (1-pgen)*decoder_attention[j,0,i]
+            print(1-pgen)
+            print(torch.sum(decoder_attention[:,0,:], dim=1))
+            print(torch.sum(prob, dim=1))
+            print(prob==0)
+            _ , max_idx = torch.max(torch.cat([decoder_output, prob.log()],2), 2)
+            print(max_idx)
 
             decoder_output_new = decoder_output + prob
             decoder_output_new = decoder_output_new.log()
@@ -591,7 +599,7 @@ def showconfig():
     print("MAX_SENTENCES = {}\nGRAD_CLIP = {}".format(MAX_SENTENCES, GRAD_CLIP))
     print("DECODER_STYLE = {}\nENCODER_STYLE = {}".format(DECODER_STYLE, ENCODER_STYLE))
     print("USE_MODEL = {}\nOUTPUT_FILE = {}".format(USE_MODEL, OUTPUT_FILE))
-
+    print("TOCOPY = {}".format(TOCOPY))
 
 def main():
     print("Start Training")
@@ -604,7 +612,8 @@ def main():
     batch_size = BATCH_SIZE
 
     # For Training
-    train_data, train_lang = loaddata(file_loc, 'train', 200)
+    train_data, train_lang = loaddata(file_loc, 'train')
+    train_data = train_data[:200]
     train_data = data2index(train_data, train_lang)
     encoder, decoder = train(train_data, train_lang,
                              embedding_size=embedding_size, learning_rate=learning_rate,

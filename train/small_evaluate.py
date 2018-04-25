@@ -6,7 +6,7 @@ from settings import file_loc, ENCODER_STYLE
 from util import load_model
 
 
-train_data, train_lang = loaddata(file_loc, 'train')
+train_data, train_lang = loaddata(file_loc, 'train',200)
 
 embedding_size = 600
 langs = train_lang
@@ -14,22 +14,22 @@ emb = docEmbedding(langs['rt'].n_words, langs['re'].n_words,
                    langs['rm'].n_words, embedding_size)
 emb.init_weights()
 
-encoder_src = './models/long4_encoder_2120'
-decoder_src = './models/long4_decoder_2120'
+encoder_src = './plain_single_encoder_200'
+decoder_src = './plain_single_decoder_200'
 
 encoder_style = None
 
 if 'RNN' == ENCODER_STYLE:
     encoder = EncoderRNN(embedding_size, emb)
     encoder_style = 'RNN'
-elif 'LSTM' == ENCODER_STYLE:
+elif 'BiLSTM' == ENCODER_STYLE:
     encoder = EncoderBiLSTM(embedding_size, emb)
     encoder_style = 'BiLSTM'
 else:
     encoder = EncoderLIN(embedding_size, emb)
     encoder_style = 'LIN'
 
-decoder = AttnDecoderRNN(embedding_size, langs['summary'].n_words)
+decoder = AttnDecoderRNN(embedding_size, langs['summary'].n_words, copy=False)
 
 encoder = load_model(encoder, encoder_src)
 decoder = load_model(decoder, decoder_src)
