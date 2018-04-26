@@ -763,7 +763,8 @@ def main():
     batch_size = BATCH_SIZE
 
     # For Training
-    train_data, train_lang = loaddata(file_loc, 'train', 200)
+    train_data, train_lang = loaddata(file_loc, 'train')
+    train_data[:200]
     train_data = data2index(train_data, train_lang)
     encoder, decoder = train(train_data, train_lang,
                              embedding_size=embedding_size, learning_rate=learning_rate,
