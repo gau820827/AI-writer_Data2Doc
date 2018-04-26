@@ -24,9 +24,8 @@ import numpy as np
 SOS_TOKEN = 0
 EOS_TOKEN = 1
 PAD_TOKEN = 2
+EOB_TOKEN = 4
 BLK_TOKEN = 5
-
-# TODO: Extend the model to copy-based model
 
 
 def get_batch(batch):

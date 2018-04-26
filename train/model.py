@@ -241,23 +241,28 @@ class EncoderBiLSTM(nn.Module):
         else:
             return (forward, backward)
 
+
 class PGenLayer(nn.Module):
     def __init__(self, emb_dim, hidden_size, enc_dim):
         super(PGenLayer, self).__init__()
         self.emb_dim = emb_dim
         self.hidden_size = hidden_size
         self.enc_dim = enc_dim
-        self.lin = nn.Linear(self.emb_dim+self.hidden_size+self.enc_dim,1)
+        self.lin = nn.Linear(self.emb_dim + self.hidden_size + self.enc_dim, 1)
+
     def forward(self, emb, hid, enc):
         '''
         param:  emb (batch_size, emb_dim)
                 hid (batch_size, hid_dim)
                 enc (batch_size, enc_dim)
         '''
-        input = torch.cat((emb,hid,enc), 1)
+        input = torch.cat((emb, hid, enc), 1)
         return F.sigmoid(self.lin(input))
 
+
 class AttnDecoderRNN(nn.Module):
+    """This is a plain decoder with attention."""
+
     def __init__(self, hidden_size, output_size, n_layers=LAYER_DEPTH, dropout_p=0.1, copy=False):
         super(AttnDecoderRNN, self).__init__()
         self.hidden_size = hidden_size
@@ -288,7 +293,7 @@ class AttnDecoderRNN(nn.Module):
         output, nh = self.gru(output, hidden)
 
         output = output.squeeze(0)
-        pgen = self.pgen( embedded, output, context)
+        pgen = self.pgen(embedded, output, context)
 
         # Output the final distribution
         output = F.log_softmax(self.out(torch.cat((output, context), 1)))
@@ -396,10 +401,10 @@ class LocalAttnDecoderRNN(nn.Module):
         for idbk in range(len(blocks)):
 
             if idbk == len(blocks) - 1:
-                st, ed = blocks[idbk], seq_len
+                st, ed = blocks[idbk], seq_len - 1
             else:
                 st, ed = blocks[idbk], blocks[idbk + 1] - 1
-
+            # print(st, ed)
             # Get context vectors for each block
             attn_weights[idbk] = self.attn(hidden[-1, :, :],
                                            encoder_outputs[:, st:ed, :])
@@ -437,7 +442,7 @@ class LocalAttnDecoderRNN(nn.Module):
             pgen = self.pgen(embedded, output, context)
             output = F.log_softmax(self.out(torch.cat((output, context), 1))) + pgen.log()
         else:
-            pgen = Variable(torch.zeros(1,1)).cuda() if use_cuda else Variable(torch.zeros(1,1))
+            pgen = Variable(torch.zeros(1, 1)).cuda() if use_cuda else Variable(torch.zeros(1, 1))
             output = F.log_softmax(self.out(torch.cat((output, context), 1)))
         return output, nh, context, attn_weights, pgen
 
@@ -465,28 +470,30 @@ class Attn(nn.Module):
         batch_size, seq_len, hidden_size = encoder_outputs.size()
         # print(encoder_outputs.size())
 
-        # Create variable to store attention energies
-        attn_energies = Variable(torch.zeros(batch_size, seq_len), requires_grad=False)  # B x 1 x S
-        if use_cuda:
-            attn_energies = attn_energies.cuda()
+        # Get hidden chuncks (batch_size, seq_len, hidden_size)
+        hidden = hidden.unsqueeze(1)  # (batch_size, 1, hidden_size)
+        hiddens = hidden.repeat(1, seq_len, 1)
+        attn_energies = self.score(hiddens, encoder_outputs)
 
-        # Calculate energies for each encoder output
-        for i in range(seq_len):
-            attn_energies[:, i] = self.score(hidden, encoder_outputs[:, i])
+        # # Calculate energies for each encoder output
+        # for i in range(seq_len):
+        #     attn_energies[:, i] = self.score(hidden, encoder_outputs[:, i])
+        # print(attn_energies.size())
 
         # Normalize energies to weights in range 0 to 1, resize to B x 1 x seq_len
         return F.softmax(attn_energies).unsqueeze(1)
 
-    def score(self, hidden, encoder_output):
+    def score(self, hidden, encoder_outputs):
         # print('size of hidden: {}'.format(hidden.size()))
         # print('size of encoder_hidden: {}'.format(encoder_output.size()))
-        energy = self.attn(encoder_output)
+        energy = self.attn(encoder_outputs)
 
         # batch-wise calculate dot-product
-        hidden = hidden.unsqueeze(1)
-        energy = energy.unsqueeze(2)
+        hidden = hidden.unsqueeze(2)  # (batch, seq, 1, d)
+        energy = energy.unsqueeze(3)  # (batch, seq, d, 1)
 
-        # print('size of energy: {}'.format(energy.size()))
-        energy = torch.bmm(hidden, energy)
+        energy = torch.matmul(hidden, energy)  # (batch, seq, 1, 1)
 
-        return energy
+        # print('size of energies: {}'.format(energy.size()))
+
+        return energy.squeeze(3).squeeze(2)
