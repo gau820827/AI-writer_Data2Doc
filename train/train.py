@@ -187,7 +187,7 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
                     for i in range(l_attn.shape[2]):
                         idx[b,rm.data[b,ctr+i],i] = 1
                 ctr += l_attn.shape[2]
-                prob += g_attn_weights[b,0,li]* torch.bmm(idx, l_attn.cpu().permute(0,2,1)).squeeze(2)
+                prob += g_attn_weights[b,0,li].cpu()* torch.bmm(idx, l_attn.cpu().permute(0,2,1)).squeeze(2)
             prob = prob.cuda() if use_cuda else prob
 
 
