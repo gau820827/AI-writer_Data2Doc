@@ -1,4 +1,6 @@
 """This is the file for main model."""
+import time
+
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
@@ -301,10 +303,10 @@ class HierarchicalDecoder(nn.Module):
     This module is for encapsulating the Hierarchical decoder part.
 
     """
-    def __init__(self, hidden_size, output_size):
+    def __init__(self, hidden_size, output_size, copy=True):
         super(HierarchicalDecoder, self).__init__()
         self.global_decoder = GlobalAttnDecoderRNN(hidden_size)
-        self.local_decoder = LocalAttnDecoderRNN(hidden_size, output_size)
+        self.local_decoder = LocalAttnDecoderRNN(hidden_size, output_size, copy=copy)
 
 
 class GlobalAttnDecoderRNN(nn.Module):
@@ -379,30 +381,17 @@ class LocalAttnDecoderRNN(nn.Module):
         embedded = self.dropout(embedded)
 
         # blocks is a list storing tth for each block
-        batch_size, seq_len, hidden_size = encoder_outputs.size()
+        batch_size_blk_size, seq_len, hidden_size = encoder_outputs.size()
+        batch_size = batch_size_blk_size // len(blocks)
 
-        attn_weights = [0 for i in range(len(blocks))]
-        block_context = [0 for i in range(len(blocks))]
+        # calculate attention scores for each block
+        hid = hidden[-1, :, :]
+        hid = hid.repeat(len(blocks), 1)
 
-        # calculate for each block
-        for idbk in range(len(blocks)):
+        attn_weights = self.attn(hid, encoder_outputs)
 
-            if idbk == len(blocks) - 1:
-                st, ed = blocks[idbk], seq_len - 1
-            else:
-                st, ed = blocks[idbk], blocks[idbk + 1] - 1
-            # print(st, ed)
-            # Get context vectors for each block
-            attn_weights[idbk] = self.attn(hidden[-1, :, :],
-                                           encoder_outputs[:, st:ed, :])
-
-            block_context[idbk] = torch.bmm(attn_weights[idbk],
-                                            encoder_outputs[:, st:ed, :])
-
-        # Stacked the block context
-        block_context = torch.stack(block_context)  # (blk_length, batch_size, 1, hidden_dim)
-        block_context = block_context.squeeze(2)
-        block_context = block_context.permute(1, 0, 2)
+        block_context = torch.bmm(attn_weights, encoder_outputs)  # (batch * blk, 1, hid)
+        block_context = block_context.view(batch_size, len(blocks), hidden_size)
 
         context = torch.bmm(block_attn_weights, block_context)
 
@@ -423,6 +412,7 @@ class LocalAttnDecoderRNN(nn.Module):
         #     layer_fnc = getattr(self, "gru" + str(i))
         #     output = layer_fnc(output, hidden[i, :, :])
         #     nh[i, :, :] = output
+
         output = output.squeeze(0)
 
         if self.copy:

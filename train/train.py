@@ -28,7 +28,6 @@ PAD_TOKEN = 2
 EOB_TOKEN = 4
 BLK_TOKEN = 5
 
-
 def get_batch(batch):
     """Get the batch into training format.
 
@@ -150,16 +149,28 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
     # print('g_input size: {}'.format(g_input.size()))
     # print('l_input size: {}'.format(l_input.size()))
     # print('')
+    start = time.time()
+    print('Encoding: {}'.format(time.time() - start))
+    local_encoder_outputs = local_encoder_outputs.contiguous().view(batch_length * len(blocks_len),
+                                                                    input_length // len(blocks_len),
+                                                                    embedding_size)
 
     for di in range(target_length):
+        print('Decoding step {}: {}'.format(di, time.time() - start))
+
         # Feed the global decoder
         if di == 0 or summary[0, di].data[0] == BLK_TOKEN:
+            # print('Global Decoder start: {}'.format(time.time() - start))
             g_output, gnh, g_context, g_attn_weights = global_decoder(
                 g_input, gnh, global_encoder_outputs)
+            # print('Global Decoder ends: {}'.format(time.time() - start))
 
         # Feed the target as the next input
+        # print('Local Decoder start: {}'.format(time.time() - start))
         l_output, lnh, l_context, l_attn_weights, pgen = local_decoder(
             l_input, lnh, g_attn_weights, local_encoder_outputs, blocks_len)
+        # print('Local Decoder ends: {}'.format(time.time() - start))
+
 
         if local_decoder.copy:
             prob = Variable(torch.zeros(l_output.shape), requires_grad=False)
@@ -329,8 +340,6 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
           encoder_style=ENCODER_STYLE, decoder_style=DECODER_STYLE,
           use_model=USE_MODEL):
     """The training procedure."""
-    # Set the timer
-    start = time.time()
 
     # Initialize the model
     emb = docEmbedding(langs['rt'].n_words, langs['re'].n_words,
@@ -354,7 +363,7 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
 
     # Choose decoder style and training function
     if decoder_style == 'HierarchicalRNN':
-        decoder = HierarchicalDecoder(embedding_size, langs['summary'].n_words)
+        decoder = HierarchicalDecoder(embedding_size, langs['summary'].n_words, copy=False)
         train_func = Hierarchical_seq_train
     elif decoder_style == 'HierarchicalBiLSTM':
         decoder = HierarchicalDecoder(embedding_size, langs['summary'].n_words)
