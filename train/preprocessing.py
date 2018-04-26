@@ -109,6 +109,16 @@ def doc2vec(doc):
                      'BLK': { player_number: value, player_number: value .... }
                     }
                 }
+            The list of keys:
+                home_name
+                box_score
+                home_city
+                vis_name
+                summary
+                vis_line
+                vis_city
+                day
+                home_line
         Return:
             A list of triplets indication the box score relationship
             [('TO', 'Ron Baker', 'N/A'), ('FG3A', 'Isaiah Thomas', '13'), ...]
@@ -129,31 +139,39 @@ def doc2vec(doc):
                     entity: string of player name
                     """
                     entity = doc[key][title][num]
-                    new_triplets.append((_type, entity, value))
+                    if entity in ['<PAD>', '<EOB>']:
+                        new_triplets.append((entity, entity, entity))
+                    else:
+                        new_triplets.append((_type, entity, value))
             else:
                 entity = doc[key][title]
                 new_triplets.append((_type, entity, _type_dic))
         return new_triplets
 
-    for k, v in doc.items():
-        if k in ['vis_line', 'home_line']:
-            ignore = ['TEAM-NAME']
-            title = 'TEAM-NAME'
+    # Read the keys in the doc
+    keys = ['box_score', 'home_name', 'home_city', 'vis_name',
+            'vis_city', 'home_line', 'vis_line']
+
+    for k in keys:
+        if k == 'box_score':
+            ignore = ['FIRST_NAME', 'SECOND_NAME', 'PLAYER_NAME']
+            title = 'PLAYER_NAME'
             new_triplets = maketriplets(doc, k, ignore, title)
             triplets += new_triplets
 
-        elif k == 'box_score':
-            ignore = ['FIRST_NAME', 'SECOND_NAME', 'PLAYER_NAME']
-            title = 'PLAYER_NAME'
+
+        elif k in ['vis_line', 'home_line']:
+            ignore = ['TEAM-NAME']
+            title = 'TEAM-NAME'
             new_triplets = maketriplets(doc, k, ignore, title)
             triplets += new_triplets
 
         # Home or Away
         else:
             if 'name' in k:
-                new_triplets = [('name', k, v)]
+                new_triplets = [('name', k, doc[k])]
             elif 'city' in k:
-                new_triplets = [('city', k, v)]
+                new_triplets = [('city', k, doc[k])]
             else:
                 continue
             triplets += new_triplets
@@ -231,7 +249,7 @@ def align_box_score(doc):
     # Retruns:
     #   box.shape = (players = 30, attributes = MAX_ATTRIBUTE)
     #
-    NULL_VAL = 'N/A'
+    NULL_PAD = '<PAD>'
     END_OF_BLOCK = '<EOB>'
     NULL_ENTITIES = []
     ignore = ['PLAYER_NAME', 'FIRST_NAME', 'SECOND_NAME']
@@ -240,15 +258,14 @@ def align_box_score(doc):
     if TEAM_SIZE < MAX_PLAYERS:
         NULL_ENTITIES = ['<PAD' + str(i) + '>' for i in range(MAX_PLAYERS - TEAM_SIZE)]
         for i in range(MAX_PLAYERS - TEAM_SIZE):
-            doc['box_score']['PLAYER_NAME'][NULL_ENTITIES[i]] = NULL_VAL
-            doc['box_score']['FIRST_NAME'][NULL_ENTITIES[i]] = NULL_VAL
-            doc['box_score']['SECOND_NAME'][NULL_ENTITIES[i]] = NULL_VAL
+            doc['box_score']['PLAYER_NAME'][NULL_ENTITIES[i]] = NULL_PAD
+            doc['box_score']['FIRST_NAME'][NULL_ENTITIES[i]] = NULL_PAD
+            doc['box_score']['SECOND_NAME'][NULL_ENTITIES[i]] = NULL_PAD
 
     # add a new player named ENDBLOCK denoting the ending of block while reading
     doc['box_score']['PLAYER_NAME']['ENDBLOCK'] = END_OF_BLOCK
     doc['box_score']['FIRST_NAME']['ENDBLOCK'] = END_OF_BLOCK
     doc['box_score']['SECOND_NAME']['ENDBLOCK'] = END_OF_BLOCK
-
     # align PAD player to 30 players, {ATT: {<PAD0>: N/A}}
     for attr, val in doc['box_score'].items():
         # attr = 'FTA', val = {number: value, ...}
@@ -256,7 +273,7 @@ def align_box_score(doc):
             continue
         if len(val) < MAX_PLAYERS:
             for i in range(MAX_PLAYERS - len(val)):
-                val[NULL_ENTITIES[i]] = NULL_VAL
+                val[NULL_ENTITIES[i]] = NULL_PAD
         # add ENDBLOCK at the end of each column
         val['ENDBLOCK'] = END_OF_BLOCK
 
