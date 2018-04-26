@@ -61,7 +61,7 @@ def readfile(filename):
     result = []
     with open(filename, 'r') as f:
         data = json.load(f)
-        for d in data:
+        for d in data[:12]:
             # # # # # # # # # # # # #
             # Added by Ken:
             #   data:  a list of dictionary containing each game information
@@ -92,7 +92,19 @@ def doc2vec(doc):
                { 'AST': { player_number: value, player_number: value .... }
                  'BLK': { player_number: value, player_number: value .... }
                 }
+
             }
+
+        The list of keys:
+                home_name
+                box_score
+                home_city
+                vis_name
+                summary
+                vis_line
+                vis_city
+                day
+                home_line
     Return:
         triplets: A list contains all triplet vectors extracting from
         the doc.
@@ -109,16 +121,6 @@ def doc2vec(doc):
                      'BLK': { player_number: value, player_number: value .... }
                     }
                 }
-            The list of keys:
-                home_name
-                box_score
-                home_city
-                vis_name
-                summary
-                vis_line
-                vis_city
-                day
-                home_line
         Return:
             A list of triplets indication the box score relationship
             [('TO', 'Ron Baker', 'N/A'), ('FG3A', 'Isaiah Thomas', '13'), ...]
