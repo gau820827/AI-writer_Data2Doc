@@ -242,7 +242,7 @@ def Plain_seq_train(rt, re, rm, summary, encoder, decoder,
             decoder_input, decoder_hidden, encoder_outputs)
             
         if decoder.copy:
-            idx = torch.zeros([decoder_output.shape[0],decoder_output.shape[1], decoder_attention.shape[2]])
+            idx = Variable(torch.zeros([decoder_output.shape[0],decoder_output.shape[1], decoder_attention.shape[2]]), requires_grad=False)
             for b in range(rm.shape[0]):    
                 for i in range(decoder_attention.shape[2]):
                     idx[b,rm.data[b,i],i] = 1
@@ -250,7 +250,8 @@ def Plain_seq_train(rt, re, rm, summary, encoder, decoder,
             #ii = ii.expand(-1,decoder_output.shape[1],-1)
             #idx.scatter_(1, ii.data, torch.ones(idx.shape))
             #prob[b, idx] += (1-pgen[b])*decoder_attention[b,i]
-            prob = torch.bmm( Variable(idx, requires_grad=False),decoder_attention.permute(0,2,1))
+            prob = torch.bmm(idx, decoder_attention.cpu().permute(0,2,1))
+            prob = prob.cuda() if use_cuda else prob
             # implement logsumexp
             # print(torch.sum(prob,1))
             decoder_output = decoder_output.unsqueeze(2)
