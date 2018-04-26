@@ -254,14 +254,17 @@ def Plain_seq_train(rt, re, rm, summary, encoder, decoder,
             prob = prob.cuda() if use_cuda else prob
             # implement logsumexp
             # print(torch.sum(prob,1))
-            decoder_output = decoder_output.unsqueeze(2)
-            combine_logs = torch.cat([decoder_output, prob.log()], 2)
-            val ,idx = torch.max ( combine_logs, 2)
-            l1 = combine_logs[:,:,0] - val
-            l2 = combine_logs[:,:,1] - val
-            # print(val==float('Inf'))
-            decoder_output_new =  val + (l1.exp() + (1-pgen)*l2.exp()).log()
+            #decoder_output = decoder_output.unsqueeze(2)
+            #combine_logs = torch.cat([decoder_output, prob.log()], 2)
+            #val ,idx = torch.max ( combine_logs, 2)
+            #l1 = combine_logs[:,:,0] - val
+            #l2 = combine_logs[:,:,1] - val
             
+            #decoder_output_new =  val + (l1.exp() + (1-pgen)*l2.exp()).log()
+            # pure calculation
+            prob = prob.squeeze(2)
+            prob = torch.mul(prob, (1-pgen))
+            decoder_output_new = (decoder_output.exp() + prob).log()
         else:
             decoder_output_new = decoder_output
         loss += criterion(decoder_output_new, summary[:, di])
