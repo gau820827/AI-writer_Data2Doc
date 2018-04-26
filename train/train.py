@@ -9,7 +9,8 @@ from torch import optim
 from preprocessing import data_iter
 from dataprepare import loaddata, data2index
 from model import docEmbedding, Seq2Seq
-from model import EncoderLIN, HierarchicalEncoderRNN, HierarchicalBiLSTM
+from model import EncoderLIN, EncoderBiLSTM
+from model import HierarchicalEncoderRNN, HierarchicalBiLSTM
 from model import AttnDecoderRNN, HierarchicalDecoder
 from util import gettime, load_model, showAttention
 from util import PriorityQueue
@@ -313,6 +314,9 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
     # TODO:: Set up a choice for hierarchical or not
     if encoder_style == 'LIN':
         encoder = EncoderLIN(embedding_size, emb)
+    elif encoder_style == 'BiLSTM':
+        encoder = EncoderBiLSTM(embedding_size, emb)
+        print("Here")
     elif encoder_style == 'HierarchicalBiLSTM':
         encoder_args = {"hidden_size": embedding_size, "local_embed": emb}
         encoder = HierarchicalBiLSTM(**encoder_args)
