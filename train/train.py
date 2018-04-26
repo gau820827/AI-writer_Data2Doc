@@ -24,9 +24,8 @@ import numpy as np
 SOS_TOKEN = 0
 EOS_TOKEN = 1
 PAD_TOKEN = 2
+EOB_TOKEN = 4
 BLK_TOKEN = 5
-
-# TODO: Extend the model to copy-based model
 
 
 def get_batch(batch):
@@ -189,12 +188,10 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
                 ctr += l_attn.shape[2]
                 prob += g_attn_weights[b,0,li].cpu()* torch.bmm(idx, l_attn.cpu().permute(0,2,1)).squeeze(2)
             prob = prob.cuda() if use_cuda else prob
-
-
             l_output_new = (l_output.exp() + (1-pgen)*prob ).log()
         else:
             l_output_new = l_output
-        
+
         loss += criterion(l_output_new, summary[:, di])
         g_input = lnh[-1, :, :]
         l_input = summary[:, di]  # Supervised
@@ -381,6 +378,8 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
     #                               lr=learning_rate, lr_decay=0, weight_decay=0)
     loss_optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=learning_rate)
 
+
+    # loss_optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=learning_rate)
 
     if use_model is not None:
         encoder = load_model(encoder, use_model[0])
