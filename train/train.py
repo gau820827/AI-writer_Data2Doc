@@ -174,23 +174,24 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
         l_output, lnh, l_context, l_attn_weights, pgen = local_decoder(
             l_input, lnh, g_attn_weights, local_encoder_outputs, blocks_len)
 
-        idx = 0
         if local_decoder.copy:
             prob = Variable(torch.zeros(l_output.shape), requires_grad=False)
-            prob = prob.cuda() if use_cuda else prob
-            if use_cuda:
-                prob = prob.cuda()
-            for l_attn in l_attn_weights:
-                for i in range(l_attn.shape[2]):
-                    prob[:,rm[:,idx+i]] += (1-pgen)*l_attn[:,0,i]
-                idx += l_attn.shape[2]
-            zero_idx = (prob<=1e-10)
-            l_output_new[:,zero_idx] = l_output[:,zero_idx]
-            print()
-            max_v = torch.max(l_output[:,~zero_idx],prob)
-            l_output_new[:,~zero_idx] = (l_output[:,~zero_idx].exp() + prob).log()
 
-            l_output_new = l_output_new.log()
+            ctr = 0
+            # print(l_output)  # [batch, vocb_lang]
+            # print(prob)
+            # print(g_attn_weights)
+            for li, l_attn in enumerate(l_attn_weights):
+                idx = Variable(torch.zeros([l_output.shape[0],l_output.shape[1], l_attn.shape[2]]), requires_grad=False)
+                for b in range(rm.shape[0]):
+                    for i in range(l_attn.shape[2]):
+                        idx[b,rm.data[b,ctr+i],i] = 1
+                ctr += l_attn.shape[2]
+                prob += g_attn_weights[b,0,li]* torch.bmm(idx, l_attn.cpu().permute(0,2,1)).squeeze(2)
+            prob = prob.cuda() if use_cuda else prob
+
+
+            l_output_new = (l_output.exp() + (1-pgen)*prob ).log()
         else:
             l_output_new = l_output
         
