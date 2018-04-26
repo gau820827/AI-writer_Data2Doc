@@ -2,9 +2,10 @@
 import torch
 file_loc = '../boxscore-data/rotowire/'
 use_cuda = torch.cuda.is_available()
-MAX_LENGTH = 683
+# MAX_LENGTH = 683
+MAX_LENGTH = 682
 LAYER_DEPTH = 1
-MAX_SENTENCES = None
+MAX_SENTENCES = 5
 USE_MODEL = None
 # USE_MODEL = ['./models/clipped_encoder_25440', './models/clipped_decoder_25440']
 # USE_MODEL = ['./models/long3_encoder_36040',
@@ -14,20 +15,21 @@ USE_MODEL = None
 EMBEDDING_SIZE = 600
 LR = 0.01
 ITER_TIME = 220
-BATCH_SIZE = 1
+BATCH_SIZE = 2
 GRAD_CLIP = 5
 
 # Parameter for display
 GET_LOSS = 1
 SAVE_MODEL = 5
-# ENCODER_STYLE = 'HierarchicalBiLSTM'
-# ENCODER_STYLE = 'HierarchicalRNN'
-ENCODER_STYLE = 'BiLSTM'
 
 # ENCODER_STYLE = 'LIN'
-# DECODER_STYLE = 'LIN'
-DECODER_STYLE = 'BiLSTM'
-# DECODER_STYLE = 'HierarchicalRNN'
+# ENCODER_STYLE = 'BiLSTM'
+# ENCODER_STYLE = 'RNN'
+# DECODER_STYLE = 'RNN'
+
+# ENCODER_STYLE = 'HierarchicalBiLSTM'
+ENCODER_STYLE = 'HierarchicalRNN'
+DECODER_STYLE = 'HierarchicalRNN'
 OUTPUT_FILE = 'copy'
 USE_MODEL = None
 
