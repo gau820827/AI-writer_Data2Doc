@@ -83,7 +83,7 @@ def readLang(data_set):
     return rt, re, rm, summarize
 
 
-def loaddata(data_dir, mode='train'):
+def loaddata(data_dir, mode='train', max_len=None):
     """The function for loading data.
 
     This function will load the data, and then turns it into
@@ -97,7 +97,8 @@ def loaddata(data_dir, mode='train'):
         A list of reading dataset and a dictionary of Langs
     """
     data_set = readfile(data_dir + mode + '.json')
-
+    if max_len is not None:
+        data_set = data_set[:max_len]
     rt, re, rm, summary = readLang(data_set)
 
     print("Read %s data" % mode)
