@@ -9,7 +9,8 @@ from torch import optim
 from preprocessing import data_iter
 from dataprepare import loaddata, data2index
 from model import docEmbedding, Seq2Seq
-from model import EncoderLIN, HierarchicalEncoderRNN, EncoderBiLSTM
+from model import EncoderLIN, EncoderBiLSTM
+from model import HierarchicalEncoderRNN, HierarchicalBiLSTM
 from model import AttnDecoderRNN, HierarchicalDecoder
 from util import gettime, load_model, showAttention
 from util import PriorityQueue
@@ -69,6 +70,21 @@ def find_max_block_numbers(batch_length, langs, rm):
     return int(np.max(BLOCK_NUMBERS)), blocks_lens
 
 
+def initGlobalEncoderInput(MAX_BLOCK, batch_length, input_length, embedding_size,
+                           local_outputs, BLOCK_JUMPS=31):
+    """
+    Args: local_outputs: (batch, seq_len, embed_size)
+    """
+    global_input = Variable(torch.zeros(MAX_BLOCK, batch_length,
+                                        embedding_size))
+    global_input = global_input.cuda() if use_cuda else global_input
+    for ei in range(input_length):
+        if ei % BLOCK_JUMPS == 0:
+            block_idx = int(ei / (BLOCK_JUMPS + 1))
+            global_input[block_idx, :, :] = local_outputs[ei, :, :]
+    return global_input
+
+
 def sequenceloss(rt, re, rm, summary, model):
     """Function for train on sentences.
 
@@ -88,61 +104,33 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
     # MAX_BLOCK is the number of global hidden states
     # block_lens is the start position of each block
     MAX_BLOCK, blocks_lens = find_max_block_numbers(batch_length, langs, rm)
-    BLOCK_JUMPS = 31
 
+    inputs = {"rt": rt, "re": re, "rm": rm}
     LocalEncoder = encoder.LocalEncoder
     GlobalEncoder = encoder.GlobalEncoder
-
-    # For now, these are redundant
-    local_encoder_outputs = Variable(torch.zeros(batch_length, MAX_LENGTH, embedding_size))
-    local_encoder_outputs = local_encoder_outputs.cuda() if use_cuda else local_encoder_outputs
-    global_encoder_outputs = Variable(torch.zeros(batch_length, MAX_BLOCK, embedding_size))
-    global_encoder_outputs = global_encoder_outputs.cuda() if use_cuda else global_encoder_outputs
 
     loss = 0
 
     # Encoding
-    if ENCODER_STYLE == 'BiLSTM':
-        init_hidden = encoder.initHidden(batch_length)
-        encoder_hidden, encoder_hiddens = encoder(rt, re, rm, init_hidden)
-
-        # Store memory information
-        encoder_outputs[:, :input_length] = encoder_hiddens[:, :input_length]
-        """
-        To do:
-            Hierarchical Encoder
-        """
-    else:
-        """
-        All inputs are compacted into dictionary
-        """
-        # Local Encoder set up
-        init_local_hidden = LocalEncoder.initHidden(batch_length)
-        local_out, local_hidden = LocalEncoder({"rt": rt, "re": re, "rm": rm},
-                                               init_local_hidden)
-        # Global Encoder setup
-        global_input = Variable(torch.zeros(MAX_BLOCK, batch_length,
-                                            embedding_size))
-        global_input = global_input.cuda() if use_cuda else global_input
-        for ei in range(input_length):
-            if ei % BLOCK_JUMPS == 0:
-                # map ei to block number
-                global_input[int(ei / (BLOCK_JUMPS + 1)), :, :] = local_out[ei, :, :]
-
-        init_global_hidden = GlobalEncoder.initHidden(batch_length)
-        global_out, global_hidden = GlobalEncoder({"local_hidden_states":
-                                                  global_input}, init_global_hidden)
-        """
-        Store memory information
-        Unify dimension: (batch, sequence length, hidden size)
-        """
-        local_encoder_outputs = local_out.permute(1, 0, 2)
-        global_encoder_outputs = global_out.permute(1, 0, 2)
+    init_local_hidden = LocalEncoder.initHidden(batch_length)
+    init_global_hidden = GlobalEncoder.initHidden(batch_length)
+    local_encoder_outputs, local_hidden = LocalEncoder(inputs, init_local_hidden)
+    global_input = initGlobalEncoderInput(MAX_BLOCK, batch_length, input_length,
+                                          embedding_size, local_encoder_outputs)
+    global_encoder_outputs, global_hidden = GlobalEncoder({"local_hidden_states":
+                                                          global_input}, init_global_hidden)
+    """
+    Encoder Result Dimension: (batch, sequence length, hidden size)
+    """
+    local_encoder_outputs = local_encoder_outputs.permute(1, 0, 2)
+    global_encoder_outputs = global_encoder_outputs.permute(1, 0, 2)
+    # Debugging: Test encoder outputs
+    # print(local_encoder_outputs)
+    # print(global_encoder_outputs)
 
     # The decoder init for developing
     global_decoder = decoder.global_decoder
     local_decoder = decoder.local_decoder
-
     # Currently, we pad all box-scores to be the same length and blocks
     blocks_len = blocks_lens[0]
 
@@ -355,6 +343,10 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         encoder = EncoderLIN(embedding_size, emb)
     elif encoder_style == 'BiLSTM':
         encoder = EncoderBiLSTM(embedding_size, emb)
+        print("Here")
+    elif encoder_style == 'HierarchicalBiLSTM':
+        encoder_args = {"hidden_size": embedding_size, "local_embed": emb}
+        encoder = HierarchicalBiLSTM(**encoder_args)
     else:
         # initialize hierarchical encoder rnn, (both global and local)
         encoder_args = {"hidden_size": embedding_size, "local_embed": emb}
@@ -362,6 +354,9 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
 
     # Choose decoder style and training function
     if decoder_style == 'HierarchicalRNN':
+        decoder = HierarchicalDecoder(embedding_size, langs['summary'].n_words)
+        train_func = Hierarchical_seq_train
+    elif decoder_style == 'HierarchicalBiLSTM':
         decoder = HierarchicalDecoder(embedding_size, langs['summary'].n_words)
         train_func = Hierarchical_seq_train
     else:
