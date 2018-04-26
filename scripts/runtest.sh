@@ -1,11 +1,11 @@
 #!/bin/sh
 #
 #SBATCH --verbose
-#SBATCH --job-name=pre_hi
-#SBATCH --output=pre_hi_b8_max5_%j.out
-#SBATCH --error=pre_hi_b8_max5_%j.err
-#SBATCH --time=24:00:00
-#SBATCH --mem=16GB
+#SBATCH --job-name=test
+#SBATCH --output=test_%j.out
+#SBATCH --error=test_%j.err
+#SBATCH --time=00:20:00
+#SBATCH --mem=10GB
 #SBATCH --gres=gpu:1
 #SBATCH --pa333rtition=p1080_4
  
