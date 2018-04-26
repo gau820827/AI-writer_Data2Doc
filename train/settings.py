@@ -6,10 +6,10 @@ MAX_LENGTH = 683
 LAYER_DEPTH = 1
 MAX_SENTENCES = None
 USE_MODEL = None
-#USE_MODEL = ['./models/clipped_encoder_25440', './models/clipped_decoder_25440']
+# USE_MODEL = ['./models/clipped_encoder_25440', './models/clipped_decoder_25440']
 # USE_MODEL = ['./models/long3_encoder_36040',
 #              './models/long3_decoder_36040',
-             # './models/long3_optim_36040']
+# './models/long3_optim_36040']
 # Parameter for training
 EMBEDDING_SIZE = 600
 LR = 0.01
@@ -20,14 +20,18 @@ GRAD_CLIP = 5
 # Parameter for display
 GET_LOSS = 1
 SAVE_MODEL = 5
-# ENCODER_STYLE = 'BiLSTM'
-ENCODER_STYLE = 'RNN'
-DECODER_STYLE = 'HierarchicalRNN'
-#DECODER_STYLE = 'RNN'
+# ENCODER_STYLE = 'HierarchicalBiLSTM'
+# ENCODER_STYLE = 'HierarchicalRNN'
+ENCODER_STYLE = 'BiLSTM'
+
+# ENCODER_STYLE = 'LIN'
+# DECODER_STYLE = 'LIN'
+DECODER_STYLE = 'BiLSTM'
+# DECODER_STYLE = 'HierarchicalRNN'
 OUTPUT_FILE = 'copy'
 USE_MODEL = None
 
 # DATA PREPROCESSING
 """ Ken added """
-MAX_PLAYERS = 30  # information taken from rotowire
+MAX_PLAYERS = 31  # information taken from rotowire
 PLAYER_PADDINGS = ['<PAD' + str(i) + '>' for i in range(0, MAX_PLAYERS)]

@@ -139,7 +139,10 @@ def doc2vec(doc):
                     entity: string of player name
                     """
                     entity = doc[key][title][num]
-                    new_triplets.append((_type, entity, value))
+                    if entity in ['<PAD>', '<EOB>']:
+                        new_triplets.append((entity, entity, entity))
+                    else:
+                        new_triplets.append((_type, entity, value))
             else:
                 entity = doc[key][title]
                 new_triplets.append((_type, entity, _type_dic))
@@ -155,6 +158,7 @@ def doc2vec(doc):
             title = 'PLAYER_NAME'
             new_triplets = maketriplets(doc, k, ignore, title)
             triplets += new_triplets
+
 
         elif k in ['vis_line', 'home_line']:
             ignore = ['TEAM-NAME']
@@ -245,7 +249,7 @@ def align_box_score(doc):
     # Retruns:
     #   box.shape = (players = 30, attributes = MAX_ATTRIBUTE)
     #
-    NULL_VAL = 'N/A'
+    NULL_PAD = '<PAD>'
     END_OF_BLOCK = '<EOB>'
     NULL_ENTITIES = []
     ignore = ['PLAYER_NAME', 'FIRST_NAME', 'SECOND_NAME']
@@ -254,15 +258,14 @@ def align_box_score(doc):
     if TEAM_SIZE < MAX_PLAYERS:
         NULL_ENTITIES = ['<PAD' + str(i) + '>' for i in range(MAX_PLAYERS - TEAM_SIZE)]
         for i in range(MAX_PLAYERS - TEAM_SIZE):
-            doc['box_score']['PLAYER_NAME'][NULL_ENTITIES[i]] = NULL_VAL
-            doc['box_score']['FIRST_NAME'][NULL_ENTITIES[i]] = NULL_VAL
-            doc['box_score']['SECOND_NAME'][NULL_ENTITIES[i]] = NULL_VAL
+            doc['box_score']['PLAYER_NAME'][NULL_ENTITIES[i]] = NULL_PAD
+            doc['box_score']['FIRST_NAME'][NULL_ENTITIES[i]] = NULL_PAD
+            doc['box_score']['SECOND_NAME'][NULL_ENTITIES[i]] = NULL_PAD
 
     # add a new player named ENDBLOCK denoting the ending of block while reading
     doc['box_score']['PLAYER_NAME']['ENDBLOCK'] = END_OF_BLOCK
     doc['box_score']['FIRST_NAME']['ENDBLOCK'] = END_OF_BLOCK
     doc['box_score']['SECOND_NAME']['ENDBLOCK'] = END_OF_BLOCK
-
     # align PAD player to 30 players, {ATT: {<PAD0>: N/A}}
     for attr, val in doc['box_score'].items():
         # attr = 'FTA', val = {number: value, ...}
@@ -270,7 +273,7 @@ def align_box_score(doc):
             continue
         if len(val) < MAX_PLAYERS:
             for i in range(MAX_PLAYERS - len(val)):
-                val[NULL_ENTITIES[i]] = NULL_VAL
+                val[NULL_ENTITIES[i]] = NULL_PAD
         # add ENDBLOCK at the end of each column
         val['ENDBLOCK'] = END_OF_BLOCK
 
