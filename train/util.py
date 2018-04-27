@@ -37,7 +37,7 @@ def load_model(model, model_src, mode='eval'):
     return model
 
 
-def showAttention(inputs, outputs, attentions):
+def show_attention(inputs, outputs, attentions):
     """The function to show attention scores.
 
     Args:
@@ -46,7 +46,6 @@ def showAttention(inputs, outputs, attentions):
         attentions: A matrix of attention scores.
 
     """
-
     score = attentions.numpy()
     for i, text in enumerate(outputs):
         max_score = ['N\A', 0]
@@ -56,6 +55,20 @@ def showAttention(inputs, outputs, attentions):
         print('{} <-> {} = {}'.format(text, max_score[0], max_score[1]))
         if text == '.':
             print('')
+
+
+def show_triplets(triplets):
+    """The function to show input triplets.
+
+    Args:
+        triplets: A list of tuples, indicating the input triplets.
+
+    """
+    for triplet in triplets:
+        print(triplet, end=',')
+        if triplet[2] == '<EOB>':
+            print('\n==============')
+    return
 
 
 class PriorityQueue:

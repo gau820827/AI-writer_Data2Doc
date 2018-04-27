@@ -3,7 +3,7 @@ import random
 import json
 from pprint import pprint
 
-from settings import file_loc, MAX_PLAYERS
+from settings import file_loc, MAX_PLAYERS, COPY_PLAYER
 """
 udpate:
 Ken
@@ -61,7 +61,7 @@ def readfile(filename):
     result = []
     with open(filename, 'r') as f:
         data = json.load(f)
-        for d in data[:12]:
+        for d in data:
             # # # # # # # # # # # # #
             # Added by Ken:
             #   data:  a list of dictionary containing each game information
@@ -111,9 +111,9 @@ def doc2vec(doc):
     """
     triplets = []
 
-    # A helper funtion to make triplet
     def maketriplets(doc, key, ignore, title):
-        """
+        """A helper funtion to make triplet.
+
         Args:
             doc:
                 {'box_score':
@@ -156,11 +156,13 @@ def doc2vec(doc):
 
     for k in keys:
         if k == 'box_score':
-            ignore = ['FIRST_NAME', 'SECOND_NAME', 'PLAYER_NAME']
+            if COPY_PLAYER:
+                ignore = []
+            else:
+                ignore = ['FIRST_NAME', 'SECOND_NAME', 'PLAYER_NAME']
             title = 'PLAYER_NAME'
             new_triplets = maketriplets(doc, k, ignore, title)
             triplets += new_triplets
-
 
         elif k in ['vis_line', 'home_line']:
             ignore = ['TEAM-NAME']
