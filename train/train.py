@@ -132,6 +132,7 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
     # The decoder init for developing
     global_decoder = decoder.global_decoder
     local_decoder = decoder.local_decoder
+
     # Currently, we pad all box-scores to be the same length and blocks
     blocks_len = blocks_lens[0]
 
@@ -152,6 +153,7 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
     # print('l_input size: {}'.format(l_input.size()))
     # print('')
 
+    # Reshape the local_encoder outputs to (batch * blocks, blk_size, hidden)
     local_encoder_outputs = local_encoder_outputs.contiguous().view(batch_length * len(blocks_len),
                                                                     input_length // len(blocks_len),
                                                                     embedding_size)
@@ -167,24 +169,40 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
             l_input, lnh, g_attn_weights, local_encoder_outputs, blocks_len)
 
         if local_decoder.copy:
-            l_attn_weights = l_attn_weights.view(batch_length, input_length)
-            prob = Variable(torch.zeros(l_output.shape), requires_grad=False)
+            # print(l_attn_weights.size())  # [batch * blocks, 1, blk_size]
+            # print(g_attn_weights.size())  # [batch, 1, blocks]
+            l_attn_weights = l_attn_weights.squeeze(1)
+            bg_attn_weights = g_attn_weights.view(batch_length * len(blocks_len), -1)
 
-            ctr = 0
+            # batch-wise calculation for block attentions
+            # (batch * blocks, blk_size) * (batch * blocks, 1)
+            combine_attn_weights = l_attn_weights * bg_attn_weights
+
+            combine_attn_weights = combine_attn_weights.view(batch_length, -1)
+
             # print(l_output)  # [batch, vocb_lang]
-            # print(prob)
-            # print(g_attn_weights)
-            for li, l_attn in enumerate(l_attn_weights):
-                print(l_attn.size())
-                idx = Variable(torch.zeros([l_output.shape[0], l_output.shape[1],
-                                           l_attn.shape[2]]), requires_grad=False)
-                for b in range(rm.shape[0]):
-                    for i in range(l_attn.shape[2]):
-                        idx[b, rm.data[b, ctr + i], i] = 1
-                ctr += l_attn.shape[2]
-                prob += g_attn_weights[b, 0, li].cpu() * torch.bmm(idx, l_attn.cpu().permute(0,2,1)).squeeze(2)
-            
+            prob = Variable(torch.zeros(l_output.shape), requires_grad=False)
             prob = prob.cuda() if use_cuda else prob
+
+            # Now we had rm as (batch, input) and combine_attn_weights as (batch, input)
+            # Add up to the pgen probability matrix
+            prob = prob.scatter_add(1, rm, combine_attn_weights)
+
+            # ctr = 0
+            # for li, l_attn in enumerate(l_attn_weights):
+            #     print(l_attn.size())
+            #     idx = Variable(torch.zeros([l_output.shape[0], l_output.shape[1],
+            #                                l_attn.shape[0]]), requires_grad=False)
+
+            #     for b in range(rm.shape[0]):
+            #         for i in range(l_attn.shape[0]):
+            #             idx[b, rm.data[b, ctr + i], i] = 1
+
+            #     print(rm.data)
+            #     ctr += l_attn.shape[0]
+
+            #     prob += g_attn_weights[b, 0, li].cpu() * torch.bmm(idx, l_attn.cpu().permute(0,2,1)).squeeze(2)
+
             l_output_new = (l_output.exp() + (1 - pgen) * prob).log()
         else:
             l_output_new = l_output
