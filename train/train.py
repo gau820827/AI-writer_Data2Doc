@@ -12,13 +12,13 @@ from model import docEmbedding, Seq2Seq
 from model import EncoderLIN, EncoderBiLSTM
 from model import HierarchicalEncoderRNN, HierarchicalBiLSTM
 from model import AttnDecoderRNN, HierarchicalDecoder
-from util import gettime, load_model, showAttention
+from util import gettime, load_model, show_triplets
 from util import PriorityQueue
 
-from settings import file_loc, use_cuda, MAX_LENGTH, USE_MODEL
+from settings import file_loc, use_cuda, USE_MODEL
 from settings import EMBEDDING_SIZE, LR, ITER_TIME, BATCH_SIZE, GRAD_CLIP
-from settings import MAX_SENTENCES, ENCODER_STYLE, DECODER_STYLE
-from settings import GET_LOSS, SAVE_MODEL, OUTPUT_FILE
+from settings import MAX_SENTENCES, ENCODER_STYLE, DECODER_STYLE, TOCOPY
+from settings import GET_LOSS, SAVE_MODEL, OUTPUT_FILE, COPY_PLAYER
 
 import numpy as np
 
@@ -27,6 +27,7 @@ EOS_TOKEN = 1
 PAD_TOKEN = 2
 EOB_TOKEN = 4
 BLK_TOKEN = 5
+
 
 def get_batch(batch):
     """Get the batch into training format.
@@ -70,7 +71,7 @@ def find_max_block_numbers(batch_length, langs, rm):
 
 
 def initGlobalEncoderInput(MAX_BLOCK, batch_length, input_length, embedding_size,
-                           local_outputs, BLOCK_JUMPS=31):
+                           local_outputs, BLOCK_JUMPS=32):
     """
     Args: local_outputs: (batch, seq_len, embed_size)
     """
@@ -123,6 +124,7 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
     """
     local_encoder_outputs = local_encoder_outputs.permute(1, 0, 2)
     global_encoder_outputs = global_encoder_outputs.permute(1, 0, 2)
+
     # Debugging: Test encoder outputs
     # print(local_encoder_outputs)
     # print(global_encoder_outputs)
@@ -130,6 +132,7 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
     # The decoder init for developing
     global_decoder = decoder.global_decoder
     local_decoder = decoder.local_decoder
+
     # Currently, we pad all box-scores to be the same length and blocks
     blocks_len = blocks_lens[0]
 
@@ -149,45 +152,58 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
     # print('g_input size: {}'.format(g_input.size()))
     # print('l_input size: {}'.format(l_input.size()))
     # print('')
-    start = time.time()
-    print('Encoding: {}'.format(time.time() - start))
+
+    # Reshape the local_encoder outputs to (batch * blocks, blk_size, hidden)
     local_encoder_outputs = local_encoder_outputs.contiguous().view(batch_length * len(blocks_len),
                                                                     input_length // len(blocks_len),
                                                                     embedding_size)
 
     for di in range(target_length):
-        print('Decoding step {}: {}'.format(di, time.time() - start))
-
         # Feed the global decoder
         if di == 0 or summary[0, di].data[0] == BLK_TOKEN:
-            # print('Global Decoder start: {}'.format(time.time() - start))
             g_output, gnh, g_context, g_attn_weights = global_decoder(
                 g_input, gnh, global_encoder_outputs)
-            # print('Global Decoder ends: {}'.format(time.time() - start))
 
         # Feed the target as the next input
-        # print('Local Decoder start: {}'.format(time.time() - start))
         l_output, lnh, l_context, l_attn_weights, pgen = local_decoder(
             l_input, lnh, g_attn_weights, local_encoder_outputs, blocks_len)
-        # print('Local Decoder ends: {}'.format(time.time() - start))
-
 
         if local_decoder.copy:
-            prob = Variable(torch.zeros(l_output.shape), requires_grad=False)
+            # print(l_attn_weights.size())  # [batch * blocks, 1, blk_size]
+            # print(g_attn_weights.size())  # [batch, 1, blocks]
+            l_attn_weights = l_attn_weights.squeeze(1)
+            bg_attn_weights = g_attn_weights.view(batch_length * len(blocks_len), -1)
 
-            ctr = 0
+            # batch-wise calculation for block attentions
+            # (batch * blocks, blk_size) * (batch * blocks, 1)
+            combine_attn_weights = l_attn_weights * bg_attn_weights
+
+            combine_attn_weights = combine_attn_weights.view(batch_length, -1)
+
             # print(l_output)  # [batch, vocb_lang]
-            # print(prob)
-            # print(g_attn_weights)
-            for li, l_attn in enumerate(l_attn_weights):
-                idx = Variable(torch.zeros([l_output.shape[0],l_output.shape[1], l_attn.shape[2]]), requires_grad=False)
-                for b in range(rm.shape[0]):
-                    for i in range(l_attn.shape[2]):
-                        idx[b,rm.data[b,ctr+i],i] = 1
-                ctr += l_attn.shape[2]
-                prob += g_attn_weights[b,0,li].cpu()* torch.bmm(idx, l_attn.cpu().permute(0,2,1)).squeeze(2)
+            prob = Variable(torch.zeros(l_output.shape), requires_grad=False)
             prob = prob.cuda() if use_cuda else prob
-            l_output_new = (l_output.exp() + (1-pgen)*prob ).log()
+
+            # Now we had rm as (batch, input) and combine_attn_weights as (batch, input)
+            # Add up to the pgen probability matrix
+            prob = prob.scatter_add(1, rm, combine_attn_weights)
+
+            # ctr = 0
+            # for li, l_attn in enumerate(l_attn_weights):
+            #     print(l_attn.size())
+            #     idx = Variable(torch.zeros([l_output.shape[0], l_output.shape[1],
+            #                                l_attn.shape[0]]), requires_grad=False)
+
+            #     for b in range(rm.shape[0]):
+            #         for i in range(l_attn.shape[0]):
+            #             idx[b, rm.data[b, ctr + i], i] = 1
+
+            #     print(rm.data)
+            #     ctr += l_attn.shape[0]
+
+            #     prob += g_attn_weights[b, 0, li].cpu() * torch.bmm(idx, l_attn.cpu().permute(0,2,1)).squeeze(2)
+
+            l_output_new = (l_output.exp() + (1 - pgen) * prob).log()
         else:
             l_output_new = l_output
 
@@ -204,7 +220,7 @@ def Plain_seq_train(rt, re, rm, summary, encoder, decoder,
     input_length = rt.size()[1]
     target_length = summary.size()[1]
 
-    encoder_outputs = Variable(torch.zeros(batch_length, MAX_LENGTH, embedding_size))
+    encoder_outputs = Variable(torch.zeros(batch_length, input_length, embedding_size))
     encoder_outputs = encoder_outputs.cuda() if use_cuda else encoder_outputs
 
     loss = 0
@@ -228,8 +244,6 @@ def Plain_seq_train(rt, re, rm, summary, encoder, decoder,
         # Get the final hidden state
         encoder_hidden = out[-1, :]
 
-    print('Encoding: {}'.format(time.time() - start))
-
     decoder_hidden = decoder.initHidden(batch_length)
     decoder_hidden[0, :, :] = encoder_hidden  # might be zero
     decoder_input = Variable(torch.LongTensor(batch_length).zero_())
@@ -238,34 +252,36 @@ def Plain_seq_train(rt, re, rm, summary, encoder, decoder,
     # Feed the target as the next input
     for di in range(target_length):
 
-        print('Decoding step {}: {}'.format(di, time.time() - start))
         decoder_output, decoder_hidden, decoder_context, decoder_attention = decoder(
 
             decoder_input, decoder_hidden, encoder_outputs)
-            
+
         if decoder.copy:
-            idx = Variable(torch.zeros([decoder_output.shape[0],decoder_output.shape[1], decoder_attention.shape[2]]), requires_grad=False)
-            for b in range(rm.shape[0]):    
+            idx = Variable(torch.zeros([decoder_output.shape[0], decoder_output.shape[1], decoder_attention.shape[2]]), requires_grad=False)
+            for b in range(rm.shape[0]):
                 for i in range(decoder_attention.shape[2]):
-                    idx[b,rm.data[b,i],i] = 1
-            #ii = rm.unsqueeze(1)
-            #ii = ii.expand(-1,decoder_output.shape[1],-1)
-            #idx.scatter_(1, ii.data, torch.ones(idx.shape))
-            #prob[b, idx] += (1-pgen[b])*decoder_attention[b,i]
-            prob = torch.bmm(idx, decoder_attention.cpu().permute(0,2,1))
+                    idx[b, rm.data[b, i], i] = 1
+
+            # ii = rm.unsqueeze(1)
+            # ii = ii.expand(-1,decoder_output.shape[1],-1)
+            # idx.scatter_(1, ii.data, torch.ones(idx.shape))
+            # prob[b, idx] += (1-pgen[b])*decoder_attention[b,i]
+
+            prob = torch.bmm(idx, decoder_attention.cpu().permute(0, 2, 1))
             prob = prob.cuda() if use_cuda else prob
+
             # implement logsumexp
             # print(torch.sum(prob,1))
-            #decoder_output = decoder_output.unsqueeze(2)
-            #combine_logs = torch.cat([decoder_output, prob.log()], 2)
-            #val ,idx = torch.max ( combine_logs, 2)
-            #l1 = combine_logs[:,:,0] - val
-            #l2 = combine_logs[:,:,1] - val
-            
-            #decoder_output_new =  val + (l1.exp() + (1-pgen)*l2.exp()).log()
+            # decoder_output = decoder_output.unsqueeze(2)
+            # combine_logs = torch.cat([decoder_output, prob.log()], 2)
+            # val ,idx = torch.max ( combine_logs, 2)
+            # l1 = combine_logs[:,:,0] - val
+            # l2 = combine_logs[:,:,1] - val
+
+            # decoder_output_new =  val + (l1.exp() + (1-pgen)*l2.exp()).log()
             # pure calculation
             prob = prob.squeeze(2)
-            prob = torch.mul(prob, (1-pgen))
+            prob = torch.mul(prob, (1 - pgen))
             decoder_output_new = (decoder_output.exp() + prob).log()
         else:
             decoder_output_new = decoder_output
@@ -359,7 +375,6 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         encoder = EncoderLIN(embedding_size, emb)
     elif encoder_style == 'BiLSTM':
         encoder = EncoderBiLSTM(embedding_size, emb)
-        print("Here")
     elif encoder_style == 'HierarchicalBiLSTM':
         encoder_args = {"hidden_size": embedding_size, "local_embed": emb}
         encoder = HierarchicalBiLSTM(**encoder_args)
@@ -372,9 +387,6 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
     if decoder_style == 'HierarchicalRNN':
         decoder = HierarchicalDecoder(embedding_size, langs['summary'].n_words, copy=False)
         train_func = Hierarchical_seq_train
-    elif decoder_style == 'HierarchicalBiLSTM':
-        decoder = HierarchicalDecoder(embedding_size, langs['summary'].n_words)
-        train_func = Hierarchical_seq_train
     else:
         decoder = AttnDecoderRNN(embedding_size, langs['summary'].n_words)
         train_func = Plain_seq_train
@@ -383,14 +395,13 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         emb.cuda()
         encoder.cuda()
         decoder.cuda()
-    
+
     # Choose optimizer
-    #loss_optimizer = optim.Adagrad(list(encoder.parameters()) + list(decoder.parameters()),
-    #                               lr=learning_rate, lr_decay=0, weight_decay=0)
-    loss_optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=learning_rate)
+    loss_optimizer = optim.Adagrad(list(encoder.parameters()) + list(decoder.parameters()),
+                                   lr=learning_rate, lr_decay=0, weight_decay=0)
 
-
-    # loss_optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=learning_rate)
+    # loss_optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()),
+    #                             lr=learning_rate)
 
     if use_model is not None:
         encoder = load_model(encoder, use_model[0])
@@ -402,9 +413,9 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
     # Build up the model
     model = Seq2Seq(encoder, decoder, train_func, criterion, embedding_size, langs)
 
-    print(encoder)
-    print(decoder)
-    print(loss_optimizer)
+    # print(encoder)
+    # print(decoder)
+    # print(loss_optimizer)
 
     total_loss = 0
     iteration = 0
@@ -418,6 +429,9 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
             iteration += 1
             data, idx_data = get_batch(dt)
             rt, re, rm, summary = idx_data
+
+            # Debugging: check the input triplets
+            # show_triplets(data[0][0])
 
             # Add paddings
             rt = addpaddings(rt)
@@ -448,7 +462,8 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
 
             # Backpropagation
             loss.backward()
-            torch.nn.utils.clip_grad_norm(list(model.encoder.parameters()) + list(model.decoder.parameters()), GRAD_CLIP)
+            torch.nn.utils.clip_grad_norm(list(model.encoder.parameters()) +
+                                          list(model.decoder.parameters()), GRAD_CLIP)
             loss_optimizer.step()
 
             # Get the average loss on the sentences
@@ -487,13 +502,13 @@ def hierarchical_predictwords(rt, re, rm, summary, encoder, decoder, lang, embed
     target_length = 1000
 
     MAX_BLOCK, blocks_lens = find_max_block_numbers(batch_length, langs, rm)
-    BLOCK_JUMPS = 31
+    BLOCK_JUMPS = 32
 
     LocalEncoder = encoder.LocalEncoder
     GlobalEncoder = encoder.GlobalEncoder
 
     # For now, these are redundant
-    local_encoder_outputs = Variable(torch.zeros(batch_length, MAX_LENGTH, embedding_size))
+    local_encoder_outputs = Variable(torch.zeros(batch_length, input_length, embedding_size))
     local_encoder_outputs = local_encoder_outputs.cuda() if use_cuda else local_encoder_outputs
     global_encoder_outputs = Variable(torch.zeros(batch_length, MAX_BLOCK, embedding_size))
     global_encoder_outputs = global_encoder_outputs.cuda() if use_cuda else global_encoder_outputs
@@ -547,7 +562,7 @@ def hierarchical_predictwords(rt, re, rm, summary, encoder, decoder, lang, embed
     l_input = Variable(torch.LongTensor(batch_length).zero_(), requires_grad=False)
     l_input = l_input.cuda() if use_cuda else l_input
 
-    decoder_attentions = torch.zeros(target_length, MAX_LENGTH)
+    decoder_attentions = torch.zeros(target_length, input_length)
 
     # Initialize the Beam
     # Each Beam cell contains [prob, route, decoder_hidden, atten]
@@ -601,6 +616,7 @@ def hierarchical_predictwords(rt, re, rm, summary, encoder, decoder, lang, embed
     decoder_attentions = beams[0][3]
     return decoded_words, decoder_attentions[:len(decoded_words)]
 
+
 def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
                  encoder_style, beam_size):
     """The function will predict the sentecnes given boxscore.
@@ -615,7 +631,7 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
     input_length = rt.size()[1]
     target_length = 1000
 
-    encoder_outputs = Variable(torch.zeros(batch_length, MAX_LENGTH, embedding_size))
+    encoder_outputs = Variable(torch.zeros(batch_length, input_length, embedding_size))
     encoder_outputs = encoder_outputs.cuda() if use_cuda else encoder_outputs
 
     # Encoding
@@ -636,7 +652,7 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
 
         encoder_hidden = out[-1, :]
 
-    decoder_attentions = torch.zeros(target_length, MAX_LENGTH)
+    decoder_attentions = torch.zeros(target_length, input_length)
 
     # Initialize the Beam
     # Each Beam cell contains [prob, route, decoder_hidden, atten]
@@ -758,7 +774,8 @@ def showconfig():
     print("EMBEDDING_SIZE = {}\nLR = {}\nITER_TIME = {}\nBATCH_SIZE = {}".format(
         EMBEDDING_SIZE, LR, ITER_TIME, BATCH_SIZE))
     print("MAX_SENTENCES = {}\nGRAD_CLIP = {}".format(MAX_SENTENCES, GRAD_CLIP))
-    print("DECODER_STYLE = {}\nENCODER_STYLE = {}".format(DECODER_STYLE, ENCODER_STYLE))
+    print("ENCODER_STYLE = {}\nDECODER_STYLE = {}".format(ENCODER_STYLE, DECODER_STYLE))
+    print("COPY = {}\nCOPY_PLAYER = {}".format(TOCOPY, COPY_PLAYER))
     print("USE_MODEL = {}\nOUTPUT_FILE = {}".format(USE_MODEL, OUTPUT_FILE))
 
 
@@ -774,7 +791,6 @@ def main():
 
     # For Training
     train_data, train_lang = loaddata(file_loc, 'train')
-    train_data[:200]
     train_data = data2index(train_data, train_lang)
     encoder, decoder = train(train_data, train_lang,
                              embedding_size=embedding_size, learning_rate=learning_rate,

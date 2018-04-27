@@ -3,18 +3,20 @@ import torch
 file_loc = '../boxscore-data/rotowire/'
 use_cuda = torch.cuda.is_available()
 
-# MAX_LENGTH = 683
-MAX_LENGTH = 682
-LAYER_DEPTH = 1
-MAX_SENTENCES = 5
+MAX_LENGTH = 800
+LAYER_DEPTH = 2
+MAX_SENTENCES = None
+
 USE_MODEL = None
 # USE_MODEL = ['./models/clipped_encoder_25440', './models/clipped_decoder_25440']
 # USE_MODEL = ['./models/long3_encoder_36040',
 #              './models/long3_decoder_36040',
 # './models/long3_optim_36040']
+
 # Parameter for training
 EMBEDDING_SIZE = 600
-LR = 0.003
+LR = 0.01  # Adagrad
+# LR = 0.003  # Adam
 ITER_TIME = 220
 BATCH_SIZE = 2
 GRAD_CLIP = 5
@@ -22,6 +24,8 @@ GRAD_CLIP = 5
 # Parameter for display
 GET_LOSS = 1
 SAVE_MODEL = 5
+
+# Choose models
 
 # ENCODER_STYLE = 'LIN'
 # ENCODER_STYLE = 'BiLSTM'
@@ -31,9 +35,8 @@ SAVE_MODEL = 5
 # ENCODER_STYLE = 'HierarchicalBiLSTM'
 ENCODER_STYLE = 'HierarchicalRNN'
 DECODER_STYLE = 'HierarchicalRNN'
-
 OUTPUT_FILE = 'copy'
-USE_MODEL = None
+COPY_PLAYER = True
 TOCOPY = True
 
 # DATA PREPROCESSING
