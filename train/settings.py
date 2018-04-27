@@ -2,7 +2,7 @@
 import torch
 file_loc = '../boxscore-data/rotowire/'
 use_cuda = torch.cuda.is_available()
-MAX_LENGTH = 683
+MAX_LENGTH = 704
 LAYER_DEPTH = 2
 MAX_SENTENCES = None
 USE_MODEL = None

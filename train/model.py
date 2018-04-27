@@ -303,10 +303,10 @@ class HierarchicalDecoder(nn.Module):
     This module is for encapsulating the Hierarchical decoder part.
 
     """
-    def __init__(self, hidden_size, output_size, copy=True):
+    def __init__(self, hidden_size, output_size):
         super(HierarchicalDecoder, self).__init__()
         self.global_decoder = GlobalAttnDecoderRNN(hidden_size)
-        self.local_decoder = LocalAttnDecoderRNN(hidden_size, output_size, copy=copy)
+        self.local_decoder = LocalAttnDecoderRNN(hidden_size, output_size)
 
 
 class GlobalAttnDecoderRNN(nn.Module):
@@ -421,6 +421,7 @@ class LocalAttnDecoderRNN(nn.Module):
         else:
             pgen = Variable(torch.zeros(1, 1)).cuda() if use_cuda else Variable(torch.zeros(1, 1))
             output = F.log_softmax(self.out(torch.cat((output, context), 1)))
+
         return output, nh, context, attn_weights, pgen
 
     def initHidden(self, batch_size):
