@@ -28,6 +28,7 @@ PAD_TOKEN = 2
 EOB_TOKEN = 4
 BLK_TOKEN = 5
 
+
 def get_batch(batch):
     """Get the batch into training format.
 
@@ -151,11 +152,6 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
     # print('g_input size: {}'.format(g_input.size()))
     # print('l_input size: {}'.format(l_input.size()))
     # print('')
-    start = time.time()
-    print('Encoding: {}'.format(time.time() - start))
-    local_encoder_outputs = local_encoder_outputs.contiguous().view(batch_length * len(blocks_len),
-                                                                    input_length // len(blocks_len),
-                                                                    embedding_size)
 
     # Reshape the local_encoder outputs to (batch * blocks, blk_size, hidden)
     local_encoder_outputs = local_encoder_outputs.contiguous().view(batch_length * len(blocks_len),
@@ -163,21 +159,14 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
                                                                     embedding_size)
 
     for di in range(target_length):
-        print('Decoding step {}: {}'.format(di, time.time() - start))
-
         # Feed the global decoder
         if di == 0 or summary[0, di].data[0] == BLK_TOKEN:
-            # print('Global Decoder start: {}'.format(time.time() - start))
             g_output, gnh, g_context, g_attn_weights = global_decoder(
                 g_input, gnh, global_encoder_outputs)
-            # print('Global Decoder ends: {}'.format(time.time() - start))
 
         # Feed the target as the next input
-        # print('Local Decoder start: {}'.format(time.time() - start))
         l_output, lnh, l_context, l_attn_weights, pgen = local_decoder(
             l_input, lnh, g_attn_weights, local_encoder_outputs, blocks_len)
-        # print('Local Decoder ends: {}'.format(time.time() - start))
-
 
         if local_decoder.copy:
             # print(l_attn_weights.size())  # [batch * blocks, 1, blk_size]
@@ -255,8 +244,6 @@ def Plain_seq_train(rt, re, rm, summary, encoder, decoder,
         # Get the final hidden state
         encoder_hidden = out[-1, :]
 
-    print('Encoding: {}'.format(time.time() - start))
-
     decoder_hidden = decoder.initHidden(batch_length)
     decoder_hidden[0, :, :] = encoder_hidden  # might be zero
     decoder_input = Variable(torch.LongTensor(batch_length).zero_())
@@ -265,7 +252,6 @@ def Plain_seq_train(rt, re, rm, summary, encoder, decoder,
     # Feed the target as the next input
     for di in range(target_length):
 
-        print('Decoding step {}: {}'.format(di, time.time() - start))
         decoder_output, decoder_hidden, decoder_context, decoder_attention = decoder(
 
             decoder_input, decoder_hidden, encoder_outputs)
