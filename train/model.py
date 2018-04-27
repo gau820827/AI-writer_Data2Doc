@@ -6,7 +6,7 @@ import torch.nn as nn
 from torch.autograd import Variable
 import torch.nn.functional as F
 
-from settings import use_cuda, MAX_LENGTH, LAYER_DEPTH
+from settings import use_cuda, MAX_LENGTH, LAYER_DEPTH, TOCOPY
 
 
 class Seq2Seq(object):
@@ -140,25 +140,25 @@ class GlobalEncoderLIN(nn.Module):
 class HierarchicalEncoderRNN(nn.Module):
     def __init__(self, hidden_size, local_embed,):
         super(HierarchicalEncoderRNN, self).__init__()
-        self.LocalEncoder = EncoderRNN(hidden_size, local_embed, LEVEL='local')
-        self.GlobalEncoder = EncoderRNN(hidden_size, None, LEVEL='global')
+        self.LocalEncoder = EncoderRNN(hidden_size, local_embed, level='local')
+        self.GlobalEncoder = EncoderRNN(hidden_size, None, level='global')
 
 
 class EncoderRNN(nn.Module):
     """Vanilla encoder using pure gru."""
-    def __init__(self, hidden_size, embedding_layer, n_layers=LAYER_DEPTH, LEVEL='local'):
+    def __init__(self, hidden_size, embedding_layer, n_layers=LAYER_DEPTH, level='local'):
         super(EncoderRNN, self).__init__()
-        self.LEVEL = LEVEL
+        self.level = level
         self.n_layers = n_layers
         self.hidden_size = hidden_size
-        if self.LEVEL == 'local':
+        if self.level == 'local':
             self.embedding = embedding_layer
         self.gru = nn.GRU(hidden_size, hidden_size, num_layers=self.n_layers)
 
     def forward(self, inputs, hidden):
         # embedded is of size (n_batch, seq_len, emb_dim)
         # gru needs (seq_len, n_batch, emb_dim)
-        if self.LEVEL == 'local':
+        if self.level == 'local':
             # local encoder: input is (rt, re, rm)
             embedded = self.embedding(inputs["rt"], inputs["re"], inputs["rm"])
             inp = embedded.permute(1, 0, 2)
@@ -166,7 +166,8 @@ class EncoderRNN(nn.Module):
             # global encoder: input is local_hidden_states
             inp = inputs["local_hidden_states"]
         output, hidden = self.gru(inp, hidden)
-
+        # output shape (seq_len, batch, hidden_size * num_directions)
+        # 1. hidden is the at t = seq_len
         return output, hidden
 
     def initHidden(self, batch_size):
@@ -178,62 +179,44 @@ class EncoderRNN(nn.Module):
             return result
 
 
-class GlobalEncoderRNN(nn.Module):
-    """
-    Global Encoder:
-        h_b_g = f(h_(b-1)_g, h_b_l)
-        receives:
-            1. last time stamp in for a block at local hidden state
-            2. previous time stamp of global hidden state
-    """
-    def __init__(self, hidden_size, n_layers=LAYER_DEPTH):
-        super(GlobalEncoderRNN, self).__init__()
-        self.n_layers = n_layers
-        self.hidden_size = hidden_size
-        self.gru = nn.GRU(hidden_size, hidden_size, num_layers=self.n_layers)
-
-    def forward(self, loc, hidden):
-        """
-        Args:
-            loc: (block_numbers, batch, hidden_size * num_directions)
-            seq_len here is block_numbers
-            loc no need to permute here
-        """
-        # gru needs (seq_len, n_batch, emb_dim)
-        output, hidden = self.gru(loc, hidden)
-
-        return output, hidden
-
-    def initHidden(self, batch_size):
-        result = Variable(torch.zeros(self.n_layers, batch_size, self.hidden_size), requires_grad=False)
-
-        if use_cuda:
-            return result.cuda()
-        else:
-            return result
+class HierarchicalBiLSTM(nn.Module):
+    """"""
+    def __init__(self, hidden_size, local_embed,):
+        super(HierarchicalBiLSTM, self).__init__()
+        self.LocalEncoder = EncoderBiLSTM(hidden_size, local_embed, level='local')
+        self.GlobalEncoder = EncoderBiLSTM(hidden_size, None, level='global')
 
 
 class EncoderBiLSTM(nn.Module):
     """Vanilla encoder using pure LSTM."""
-    def __init__(self, hidden_size, embedding_layer, n_layers=LAYER_DEPTH):
+    def __init__(self, hidden_size, embedding_layer, n_layers=LAYER_DEPTH, level='local'):
         super(EncoderBiLSTM, self).__init__()
+        self.level = level
         self.n_layers = n_layers
         self.hidden_size = hidden_size
-
-        self.embedding = embedding_layer
+        if self.level == 'local':
+            self.embedding = embedding_layer
         self.bilstm = nn.LSTM(hidden_size, hidden_size // 2, num_layers=n_layers, bidirectional=True)
 
-    def forward(self, rt, re, rm, hidden):
-        embedded = self.embedding(rt, re, rm)
-        embedded = torch.transpose(embedded, 0, 1)
-        bilstm_outs, self.hidden = self.bilstm(embedded, hidden)
+    def forward(self, inputs, hidden):
+        # embedded is of size (n_batch, seq_len, emb_dim)
+        if self.level == 'local':
+            embedded = self.embedding(inputs['rt'], inputs['re'], inputs['rm'])
+            # aligned it to permute
+            # embedded = torch.transpose(embedded, 0, 1)
+            inp = embedded.permute(1, 0, 2)
+        else:
+            inp = inputs['local_hidden_states']
 
+        # lstm needs: (seq_len, batch, input_size)
+        bilstm_outs, self.hidden = self.bilstm(inp, hidden)
+        # bilstm_outs: (seq_len, batch, hidden_size * num_directions )
         output = torch.transpose(bilstm_outs, 0, 1)
         output = torch.transpose(output, 1, 2)
         output = F.tanh(output)
         output = F.max_pool1d(output, output.size(2)).squeeze(2)
-
-        return output, torch.transpose(bilstm_outs, 0, 1)
+        # Ken modified the output order (original is output, bilstm_out)
+        return bilstm_outs, output
 
     def initHidden(self, batch_size):
         forward = Variable(torch.zeros(2 * self.n_layers, batch_size, self.hidden_size // 2), requires_grad=False)
@@ -264,8 +247,7 @@ class PGenLayer(nn.Module):
 
 class AttnDecoderRNN(nn.Module):
     """This is a plain decoder with attention."""
-
-    def __init__(self, hidden_size, output_size, n_layers=LAYER_DEPTH, dropout_p=0.1, copy=False):
+    def __init__(self, hidden_size, output_size, n_layers=LAYER_DEPTH, dropout_p=0.1, copy=TOCOPY):
         super(AttnDecoderRNN, self).__init__()
         self.hidden_size = hidden_size
         self.output_size = output_size
@@ -277,7 +259,8 @@ class AttnDecoderRNN(nn.Module):
         self.attn = Attn(hidden_size)
         self.gru = nn.GRU(hidden_size * 2, hidden_size, n_layers, dropout=dropout_p)
         self.out = nn.Linear(self.hidden_size * 2, self.output_size)
-        self.pgen = PGenLayer(self.hidden_size, self.hidden_size, self.hidden_size)
+        if self.copy:
+            self.pgen = PGenLayer(self.hidden_size, self.hidden_size, self.hidden_size)
 
     def forward(self, input, hidden, encoder_outputs):
         embedded = self.embedding(input)
@@ -295,12 +278,16 @@ class AttnDecoderRNN(nn.Module):
         output, nh = self.gru(output, hidden)
 
         output = output.squeeze(0)
-        pgen = self.pgen(embedded, output, context)
 
-        # Output the final distribution
-        output = F.log_softmax(self.out(torch.cat((output, context), 1)))
+        if self.copy:
+            pgen = self.pgen(embedded, output, context)
+            output = F.log_softmax(self.out(torch.cat((output, context), 1))) + pgen.log()
+        else:
+            pgen = 0
+            # Output the final distribution
+            output = F.log_softmax(self.out(torch.cat((output, context), 1)))
 
-        return output, nh, context, attn_weights
+        return output, nh, context, attn_weights, pgen
 
     def initHidden(self, batch_size):
         result = Variable(torch.zeros(self.n_layers, batch_size, self.hidden_size), requires_grad=False)
@@ -369,7 +356,7 @@ class LocalAttnDecoderRNN(nn.Module):
 
     """
     def __init__(self, hidden_size, output_size, max_length=MAX_LENGTH,
-                 n_layers=LAYER_DEPTH, dropout_p=0.1, copy=True):
+                 n_layers=LAYER_DEPTH, dropout_p=0.1, copy=TOCOPY):
         super(LocalAttnDecoderRNN, self).__init__()
         self.hidden_size = hidden_size
         self.output_size = output_size

@@ -9,7 +9,8 @@ from torch import optim
 from preprocessing import data_iter
 from dataprepare import loaddata, data2index
 from model import docEmbedding, Seq2Seq
-from model import EncoderLIN, HierarchicalEncoderRNN, EncoderBiLSTM
+from model import EncoderLIN, EncoderBiLSTM
+from model import HierarchicalEncoderRNN, HierarchicalBiLSTM
 from model import AttnDecoderRNN, HierarchicalDecoder
 from util import gettime, load_model, showAttention
 from util import PriorityQueue
@@ -68,6 +69,21 @@ def find_max_block_numbers(batch_length, langs, rm):
     return int(np.max(BLOCK_NUMBERS)), blocks_lens
 
 
+def initGlobalEncoderInput(MAX_BLOCK, batch_length, input_length, embedding_size,
+                           local_outputs, BLOCK_JUMPS=31):
+    """
+    Args: local_outputs: (batch, seq_len, embed_size)
+    """
+    global_input = Variable(torch.zeros(MAX_BLOCK, batch_length,
+                                        embedding_size))
+    global_input = global_input.cuda() if use_cuda else global_input
+    for ei in range(input_length):
+        if ei % BLOCK_JUMPS == 0:
+            block_idx = int(ei / (BLOCK_JUMPS + 1))
+            global_input[block_idx, :, :] = local_outputs[ei, :, :]
+    return global_input
+
+
 def sequenceloss(rt, re, rm, summary, model):
     """Function for train on sentences.
 
@@ -87,62 +103,33 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
     # MAX_BLOCK is the number of global hidden states
     # block_lens is the start position of each block
     MAX_BLOCK, blocks_lens = find_max_block_numbers(batch_length, langs, rm)
-    BLOCK_JUMPS = 31
 
+    inputs = {"rt": rt, "re": re, "rm": rm}
     LocalEncoder = encoder.LocalEncoder
     GlobalEncoder = encoder.GlobalEncoder
-
-    # For now, these are redundant
-    local_encoder_outputs = Variable(torch.zeros(batch_length, MAX_LENGTH, embedding_size))
-    local_encoder_outputs = local_encoder_outputs.cuda() if use_cuda else local_encoder_outputs
-    global_encoder_outputs = Variable(torch.zeros(batch_length, MAX_BLOCK, embedding_size))
-    global_encoder_outputs = global_encoder_outputs.cuda() if use_cuda else global_encoder_outputs
 
     loss = 0
 
     # Encoding
-    if ENCODER_STYLE == 'BiLSTM':
-        init_hidden = encoder.initHidden(batch_length)
-        encoder_hidden, encoder_hiddens = encoder(rt, re, rm, init_hidden)
-
-        # Store memory information
-        for ei in range(input_length):
-            encoder_outputs[:, ei] = encoder_hiddens[:, ei]
-        """
-        To do:
-            Hierarchical Encoder
-        """
-    else:
-        """
-        All inputs are compacted into dictionary
-        """
-        # Local Encoder set up
-        init_local_hidden = LocalEncoder.initHidden(batch_length)
-        local_out, local_hidden = LocalEncoder({"rt": rt, "re": re, "rm": rm},
-                                               init_local_hidden)
-        # Global Encoder setup
-        global_input = Variable(torch.zeros(MAX_BLOCK, batch_length,
-                                            embedding_size))
-        global_input = global_input.cuda() if use_cuda else global_input
-        for ei in range(input_length):
-            if ei % BLOCK_JUMPS == 0:
-                # map ei to block number
-                global_input[int(ei / (BLOCK_JUMPS + 1)), :, :] = local_out[ei, :, :]
-
-        init_global_hidden = GlobalEncoder.initHidden(batch_length)
-        global_out, global_hidden = GlobalEncoder({"local_hidden_states":
-                                                  global_input}, init_global_hidden)
-        """
-        Store memory information
-        Unify dimension: (batch, sequence length, hidden size)
-        """
-        local_encoder_outputs = local_out.permute(1, 0, 2)
-        global_encoder_outputs = global_out.permute(1, 0, 2)
+    init_local_hidden = LocalEncoder.initHidden(batch_length)
+    init_global_hidden = GlobalEncoder.initHidden(batch_length)
+    local_encoder_outputs, local_hidden = LocalEncoder(inputs, init_local_hidden)
+    global_input = initGlobalEncoderInput(MAX_BLOCK, batch_length, input_length,
+                                          embedding_size, local_encoder_outputs)
+    global_encoder_outputs, global_hidden = GlobalEncoder({"local_hidden_states":
+                                                          global_input}, init_global_hidden)
+    """
+    Encoder Result Dimension: (batch, sequence length, hidden size)
+    """
+    local_encoder_outputs = local_encoder_outputs.permute(1, 0, 2)
+    global_encoder_outputs = global_encoder_outputs.permute(1, 0, 2)
+    # Debugging: Test encoder outputs
+    # print(local_encoder_outputs)
+    # print(global_encoder_outputs)
 
     # The decoder init for developing
     global_decoder = decoder.global_decoder
     local_decoder = decoder.local_decoder
-
     # Currently, we pad all box-scores to be the same length and blocks
     blocks_len = blocks_lens[0]
 
@@ -185,20 +172,22 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
         # print('Local Decoder ends: {}'.format(time.time() - start))
 
 
-        idx = 0
         if local_decoder.copy:
-            l_output = l_output.exp()
             prob = Variable(torch.zeros(l_output.shape), requires_grad=False)
-            prob = prob.cuda() if use_cuda else prob
-            if use_cuda:
-                prob = prob.cuda()
-            for l_attn in l_attn_weights:
-                for i in range(l_attn.shape[2]):
-                    prob[:, rm[:, idx + i]] += (1 - pgen) * l_attn[:, 0, i]
-                idx += l_attn.shape[2]
-            l_output_new = l_output + prob
 
-            l_output_new = l_output_new.log()
+            ctr = 0
+            # print(l_output)  # [batch, vocb_lang]
+            # print(prob)
+            # print(g_attn_weights)
+            for li, l_attn in enumerate(l_attn_weights):
+                idx = Variable(torch.zeros([l_output.shape[0],l_output.shape[1], l_attn.shape[2]]), requires_grad=False)
+                for b in range(rm.shape[0]):
+                    for i in range(l_attn.shape[2]):
+                        idx[b,rm.data[b,ctr+i],i] = 1
+                ctr += l_attn.shape[2]
+                prob += g_attn_weights[b,0,li].cpu()* torch.bmm(idx, l_attn.cpu().permute(0,2,1)).squeeze(2)
+            prob = prob.cuda() if use_cuda else prob
+            l_output_new = (l_output.exp() + (1-pgen)*prob ).log()
         else:
             l_output_new = l_output
 
@@ -248,11 +237,39 @@ def Plain_seq_train(rt, re, rm, summary, encoder, decoder,
 
     # Feed the target as the next input
     for di in range(target_length):
+
         print('Decoding step {}: {}'.format(di, time.time() - start))
         decoder_output, decoder_hidden, decoder_context, decoder_attention = decoder(
-            decoder_input, decoder_hidden, encoder_outputs)
 
-        loss += criterion(decoder_output, summary[:, di])
+            decoder_input, decoder_hidden, encoder_outputs)
+            
+        if decoder.copy:
+            idx = Variable(torch.zeros([decoder_output.shape[0],decoder_output.shape[1], decoder_attention.shape[2]]), requires_grad=False)
+            for b in range(rm.shape[0]):    
+                for i in range(decoder_attention.shape[2]):
+                    idx[b,rm.data[b,i],i] = 1
+            #ii = rm.unsqueeze(1)
+            #ii = ii.expand(-1,decoder_output.shape[1],-1)
+            #idx.scatter_(1, ii.data, torch.ones(idx.shape))
+            #prob[b, idx] += (1-pgen[b])*decoder_attention[b,i]
+            prob = torch.bmm(idx, decoder_attention.cpu().permute(0,2,1))
+            prob = prob.cuda() if use_cuda else prob
+            # implement logsumexp
+            # print(torch.sum(prob,1))
+            #decoder_output = decoder_output.unsqueeze(2)
+            #combine_logs = torch.cat([decoder_output, prob.log()], 2)
+            #val ,idx = torch.max ( combine_logs, 2)
+            #l1 = combine_logs[:,:,0] - val
+            #l2 = combine_logs[:,:,1] - val
+            
+            #decoder_output_new =  val + (l1.exp() + (1-pgen)*l2.exp()).log()
+            # pure calculation
+            prob = prob.squeeze(2)
+            prob = torch.mul(prob, (1-pgen))
+            decoder_output_new = (decoder_output.exp() + prob).log()
+        else:
+            decoder_output_new = decoder_output
+        loss += criterion(decoder_output_new, summary[:, di])
         decoder_input = summary[:, di]  # Supervised
 
     return loss
@@ -342,6 +359,10 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         encoder = EncoderLIN(embedding_size, emb)
     elif encoder_style == 'BiLSTM':
         encoder = EncoderBiLSTM(embedding_size, emb)
+        print("Here")
+    elif encoder_style == 'HierarchicalBiLSTM':
+        encoder_args = {"hidden_size": embedding_size, "local_embed": emb}
+        encoder = HierarchicalBiLSTM(**encoder_args)
     else:
         # initialize hierarchical encoder rnn, (both global and local)
         encoder_args = {"hidden_size": embedding_size, "local_embed": emb}
@@ -351,6 +372,9 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
     if decoder_style == 'HierarchicalRNN':
         decoder = HierarchicalDecoder(embedding_size, langs['summary'].n_words, copy=False)
         train_func = Hierarchical_seq_train
+    elif decoder_style == 'HierarchicalBiLSTM':
+        decoder = HierarchicalDecoder(embedding_size, langs['summary'].n_words)
+        train_func = Hierarchical_seq_train
     else:
         decoder = AttnDecoderRNN(embedding_size, langs['summary'].n_words)
         train_func = Plain_seq_train
@@ -359,10 +383,12 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         emb.cuda()
         encoder.cuda()
         decoder.cuda()
-
+    
     # Choose optimizer
-    loss_optimizer = optim.Adagrad(list(encoder.parameters()) + list(decoder.parameters()),
-                                   lr=learning_rate, lr_decay=0, weight_decay=0)
+    #loss_optimizer = optim.Adagrad(list(encoder.parameters()) + list(decoder.parameters()),
+    #                               lr=learning_rate, lr_decay=0, weight_decay=0)
+    loss_optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=learning_rate)
+
 
     # loss_optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=learning_rate)
 
@@ -375,6 +401,10 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
 
     # Build up the model
     model = Seq2Seq(encoder, decoder, train_func, criterion, embedding_size, langs)
+
+    print(encoder)
+    print(decoder)
+    print(loss_optimizer)
 
     total_loss = 0
     iteration = 0
@@ -433,17 +463,16 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
 
         if epo % save_model == 0:
             torch.save(encoder.state_dict(),
-                       "{}_encoder_{}".format(OUTPUT_FILE, iteration))
+                    "{}_encoder_{}".format(OUTPUT_FILE, iteration))
             torch.save(decoder.state_dict(),
-                       "{}_decoder_{}".format(OUTPUT_FILE, iteration))
+                    "{}_decoder_{}".format(OUTPUT_FILE, iteration))
             torch.save(loss_optimizer.state_dict(),
-                       "models/{}_optim_{}".format(OUTPUT_FILE, iteration))
+                    "models/{}_optim_{}".format(OUTPUT_FILE, iteration))
             print("Save the model at iter {}".format(iteration))
 
     return model.encoder, model.decoder
 
-
-def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
+def hierarchical_predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
                  encoder_style, beam_size):
     """The function will predict the sentecnes given boxscore.
 
@@ -457,10 +486,18 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
     input_length = rt.size()[1]
     target_length = 1000
 
-    encoder_outputs = Variable(torch.zeros(batch_length, MAX_LENGTH, embedding_size))
-    encoder_outputs = encoder_outputs.cuda() if use_cuda else encoder_outputs
+    MAX_BLOCK, blocks_lens = find_max_block_numbers(batch_length, langs, rm)
+    BLOCK_JUMPS = 31
 
-    encoder_hidden = encoder.initHidden(batch_length)
+    LocalEncoder = encoder.LocalEncoder
+    GlobalEncoder = encoder.GlobalEncoder
+
+    # For now, these are redundant
+    local_encoder_outputs = Variable(torch.zeros(batch_length, MAX_LENGTH, embedding_size))
+    local_encoder_outputs = local_encoder_outputs.cuda() if use_cuda else local_encoder_outputs
+    global_encoder_outputs = Variable(torch.zeros(batch_length, MAX_BLOCK, embedding_size))
+    global_encoder_outputs = global_encoder_outputs.cuda() if use_cuda else global_encoder_outputs
+
 
     # Encoding
     if encoder_style == 'BiLSTM':
@@ -472,11 +509,43 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
             encoder_outputs[:, ei] = encoder_hiddens[:, ei]
 
     else:
-        encoder_hidden = encoder.initHidden(batch_length)
-        out, encoder_hidden = encoder(rt, re, rm, encoder_hidden)
+        # Local Encoder set up
+        init_local_hidden = LocalEncoder.initHidden(batch_length)
+        local_out, local_hidden = LocalEncoder({"rt": rt, "re": re, "rm": rm},
+                                               init_local_hidden)
+        # Global Encoder setup
+        global_input = Variable(torch.zeros(MAX_BLOCK, batch_length,
+                                            embedding_size))
+        global_input = global_input.cuda() if use_cuda else global_input
+        for ei in range(input_length):
+            if ei % BLOCK_JUMPS == 0:
+                # map ei to block number
+                global_input[int(ei / (BLOCK_JUMPS + 1)), :, :] = local_out[ei, :, :]
 
-        # Store memory information
-        encoder_outputs = out.permute(1, 0, 2)
+        init_global_hidden = GlobalEncoder.initHidden(batch_length)
+        global_out, global_hidden = GlobalEncoder({"local_hidden_states":
+                                                  global_input}, init_global_hidden)
+        """
+        Store memory information
+        Unify dimension: (batch, sequence length, hidden size)
+        """
+        local_encoder_outputs = local_out.permute(1, 0, 2)
+        global_encoder_outputs = global_out.permute(1, 0, 2)
+
+    # The decoder init for developing
+    global_decoder = decoder.global_decoder
+    local_decoder = decoder.local_decoder
+
+    # Currently, we pad all box-scores to be the same length and blocks
+    blocks_len = blocks_lens[0]
+
+    # decoder starts
+    gnh = global_decoder.initHidden(batch_length)
+    lnh = local_decoder.initHidden(batch_length)
+
+    g_input = global_encoder_outputs[:, -1]
+    l_input = Variable(torch.LongTensor(batch_length).zero_(), requires_grad=False)
+    l_input = l_input.cuda() if use_cuda else l_input
 
     decoder_attentions = torch.zeros(target_length, MAX_LENGTH)
 
@@ -513,6 +582,108 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
 
             # decode the word
             topv, topi = decoder_output.data.topk(beam_size)
+
+            for i in range(beam_size):
+                p = topv[0][i]
+                idp = topi[0][i]
+                new_beam = [prob + p, route + [idp], decoder_hidden, atten]
+                q.push(new_beam, new_beam[0])
+
+        # Keep the highest K probability
+        beams = [q.pop() for i in range(beam_size)]
+
+        # If the highest one is finished, we take that.
+        if beams[0][1][-1] == 1:
+            break
+
+    # Get decoded_words and decoder_attetntions
+    decoded_words = [lang.index2word[w] for w in beams[0][1][1:]]
+    decoder_attentions = beams[0][3]
+    return decoded_words, decoder_attentions[:len(decoded_words)]
+
+def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
+                 encoder_style, beam_size):
+    """The function will predict the sentecnes given boxscore.
+
+    Encode the given box score, decode it to sentences, and then
+    return the prediction and attention matrix.
+
+    While decoding, beam search will be conducted with default beam_size as 1.
+
+    """
+    batch_length = rt.size()[0]
+    input_length = rt.size()[1]
+    target_length = 1000
+
+    encoder_outputs = Variable(torch.zeros(batch_length, MAX_LENGTH, embedding_size))
+    encoder_outputs = encoder_outputs.cuda() if use_cuda else encoder_outputs
+
+    # Encoding
+    if encoder_style == 'BiLSTM':
+        init_hidden = encoder.initHidden(batch_length)
+        encoder_hidden, encoder_hiddens = encoder(rt, re, rm, init_hidden)
+
+        # Store memory information
+        for ei in range(input_length):
+            encoder_outputs[:, ei] = encoder_hiddens[:, ei]
+
+    else:
+        encoder_hidden = encoder.initHidden(batch_length)
+        out, encoder_hidden = encoder(rt, re, rm, encoder_hidden)
+
+        # Store memory information
+        encoder_outputs = out.permute(1, 0, 2)
+
+        encoder_hidden = out[-1, :]
+
+    decoder_attentions = torch.zeros(target_length, MAX_LENGTH)
+
+    # Initialize the Beam
+    # Each Beam cell contains [prob, route, decoder_hidden, atten]
+    beams = [[0, [SOS_TOKEN], encoder_hidden, decoder_attentions]]
+
+    # For each step
+    for di in range(target_length):
+
+        # For each information in the beam
+        q = PriorityQueue()
+        for beam in beams:
+
+            prob, route, decoder_hidden, atten = beam
+            destination = len(route) - 1
+
+            # Get the lastest predecition
+            decoder_input = route[-1]
+
+            # If <EOS>, do not search for it
+            if decoder_input == EOS_TOKEN:
+                q.push(beam, prob)
+                continue
+
+            decoder_input = Variable(torch.LongTensor([decoder_input]))
+            decoder_input = decoder_input.cuda() if use_cuda else decoder_input
+            decoder_output, decoder_hidden, decoder_context, decoder_attention, pgen = decoder(
+                decoder_input, decoder_hidden, encoder_outputs)
+
+            if decoder.copy:
+                decoder_output = decoder_output.exp()
+                prob = Variable(torch.zeros(decoder_output.shape), requires_grad=False)
+                prob = prob.cuda() if use_cuda else prob
+                for i in range(decoder_attention.shape[2]):
+                    prob[:,rm[:,i]] += (1-pgen)*decoder_attention[:,0,i]
+
+                decoder_output_new = decoder_output + prob
+                decoder_output_new = decoder_output_new.log()
+            else:
+                decoder_output_new = decoder_output
+
+            # Get the attention vector at each prediction
+            atten[destination, :decoder_attention.shape[2]] = decoder_attention.data[0, 0, :]
+
+            # decode the word
+            topv, topi = decoder_output.data.topk(beam_size)
+
+            #TODO 
 
             for i in range(beam_size):
                 p = topv[0][i]
@@ -603,6 +774,7 @@ def main():
 
     # For Training
     train_data, train_lang = loaddata(file_loc, 'train')
+    train_data[:200]
     train_data = data2index(train_data, train_lang)
     encoder, decoder = train(train_data, train_lang,
                              embedding_size=embedding_size, learning_rate=learning_rate,
