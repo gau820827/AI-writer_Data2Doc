@@ -2,9 +2,11 @@
 import torch
 file_loc = '../boxscore-data/rotowire/'
 use_cuda = torch.cuda.is_available()
+
 MAX_LENGTH = 704
 LAYER_DEPTH = 2
 MAX_SENTENCES = None
+
 USE_MODEL = None
 # USE_MODEL = ['./models/clipped_encoder_25440', './models/clipped_decoder_25440']
 # USE_MODEL = ['./models/long3_encoder_36040',

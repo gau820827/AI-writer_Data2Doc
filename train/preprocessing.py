@@ -61,7 +61,7 @@ def readfile(filename):
     result = []
     with open(filename, 'r') as f:
         data = json.load(f)
-        for d in data:
+        for d in data[:12]:
             # # # # # # # # # # # # #
             # Added by Ken:
             #   data:  a list of dictionary containing each game information

@@ -303,10 +303,10 @@ class HierarchicalDecoder(nn.Module):
     This module is for encapsulating the Hierarchical decoder part.
 
     """
-    def __init__(self, hidden_size, output_size):
+    def __init__(self, hidden_size, output_size, copy=True):
         super(HierarchicalDecoder, self).__init__()
         self.global_decoder = GlobalAttnDecoderRNN(hidden_size)
-        self.local_decoder = LocalAttnDecoderRNN(hidden_size, output_size)
+        self.local_decoder = LocalAttnDecoderRNN(hidden_size, output_size, copy=copy)
 
 
 class GlobalAttnDecoderRNN(nn.Module):
