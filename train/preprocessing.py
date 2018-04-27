@@ -3,7 +3,7 @@ import random
 import json
 from pprint import pprint
 
-from settings import file_loc, MAX_PLAYERS
+from settings import file_loc, MAX_PLAYERS, COPY_PLAYER
 """
 udpate:
 Ken
@@ -156,8 +156,10 @@ def doc2vec(doc):
 
     for k in keys:
         if k == 'box_score':
-            ignore = []
-            # ignore = ['FIRST_NAME', 'SECOND_NAME', 'PLAYER_NAME']
+            if COPY_PLAYER:
+                ignore = []
+            else:
+                ignore = ['FIRST_NAME', 'SECOND_NAME', 'PLAYER_NAME']
             title = 'PLAYER_NAME'
             new_triplets = maketriplets(doc, k, ignore, title)
             triplets += new_triplets

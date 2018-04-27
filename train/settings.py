@@ -12,6 +12,7 @@ USE_MODEL = None
 # USE_MODEL = ['./models/long3_encoder_36040',
 #              './models/long3_decoder_36040',
 # './models/long3_optim_36040']
+
 # Parameter for training
 EMBEDDING_SIZE = 600
 LR = 0.01  # Adagrad
@@ -35,7 +36,7 @@ SAVE_MODEL = 5
 ENCODER_STYLE = 'HierarchicalRNN'
 DECODER_STYLE = 'HierarchicalRNN'
 OUTPUT_FILE = 'copy'
-USE_MODEL = None
+COPY_PLAYER = True
 TOCOPY = True
 
 # DATA PREPROCESSING

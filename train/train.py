@@ -15,10 +15,10 @@ from model import AttnDecoderRNN, HierarchicalDecoder
 from util import gettime, load_model, show_triplets
 from util import PriorityQueue
 
-from settings import file_loc, use_cuda, MAX_LENGTH, USE_MODEL
+from settings import file_loc, use_cuda, USE_MODEL
 from settings import EMBEDDING_SIZE, LR, ITER_TIME, BATCH_SIZE, GRAD_CLIP
 from settings import MAX_SENTENCES, ENCODER_STYLE, DECODER_STYLE, TOCOPY
-from settings import GET_LOSS, SAVE_MODEL, OUTPUT_FILE
+from settings import GET_LOSS, SAVE_MODEL, OUTPUT_FILE, COPY_PLAYER
 
 import numpy as np
 
@@ -220,7 +220,7 @@ def Plain_seq_train(rt, re, rm, summary, encoder, decoder,
     input_length = rt.size()[1]
     target_length = summary.size()[1]
 
-    encoder_outputs = Variable(torch.zeros(batch_length, MAX_LENGTH, embedding_size))
+    encoder_outputs = Variable(torch.zeros(batch_length, input_length, embedding_size))
     encoder_outputs = encoder_outputs.cuda() if use_cuda else encoder_outputs
 
     loss = 0
@@ -508,7 +508,7 @@ def hierarchical_predictwords(rt, re, rm, summary, encoder, decoder, lang, embed
     GlobalEncoder = encoder.GlobalEncoder
 
     # For now, these are redundant
-    local_encoder_outputs = Variable(torch.zeros(batch_length, MAX_LENGTH, embedding_size))
+    local_encoder_outputs = Variable(torch.zeros(batch_length, input_length, embedding_size))
     local_encoder_outputs = local_encoder_outputs.cuda() if use_cuda else local_encoder_outputs
     global_encoder_outputs = Variable(torch.zeros(batch_length, MAX_BLOCK, embedding_size))
     global_encoder_outputs = global_encoder_outputs.cuda() if use_cuda else global_encoder_outputs
@@ -562,7 +562,7 @@ def hierarchical_predictwords(rt, re, rm, summary, encoder, decoder, lang, embed
     l_input = Variable(torch.LongTensor(batch_length).zero_(), requires_grad=False)
     l_input = l_input.cuda() if use_cuda else l_input
 
-    decoder_attentions = torch.zeros(target_length, MAX_LENGTH)
+    decoder_attentions = torch.zeros(target_length, input_length)
 
     # Initialize the Beam
     # Each Beam cell contains [prob, route, decoder_hidden, atten]
@@ -616,6 +616,7 @@ def hierarchical_predictwords(rt, re, rm, summary, encoder, decoder, lang, embed
     decoder_attentions = beams[0][3]
     return decoded_words, decoder_attentions[:len(decoded_words)]
 
+
 def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
                  encoder_style, beam_size):
     """The function will predict the sentecnes given boxscore.
@@ -630,7 +631,7 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
     input_length = rt.size()[1]
     target_length = 1000
 
-    encoder_outputs = Variable(torch.zeros(batch_length, MAX_LENGTH, embedding_size))
+    encoder_outputs = Variable(torch.zeros(batch_length, input_length, embedding_size))
     encoder_outputs = encoder_outputs.cuda() if use_cuda else encoder_outputs
 
     # Encoding
@@ -651,7 +652,7 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
 
         encoder_hidden = out[-1, :]
 
-    decoder_attentions = torch.zeros(target_length, MAX_LENGTH)
+    decoder_attentions = torch.zeros(target_length, input_length)
 
     # Initialize the Beam
     # Each Beam cell contains [prob, route, decoder_hidden, atten]
@@ -774,7 +775,7 @@ def showconfig():
         EMBEDDING_SIZE, LR, ITER_TIME, BATCH_SIZE))
     print("MAX_SENTENCES = {}\nGRAD_CLIP = {}".format(MAX_SENTENCES, GRAD_CLIP))
     print("ENCODER_STYLE = {}\nDECODER_STYLE = {}".format(ENCODER_STYLE, DECODER_STYLE))
-    print("COPY = {}".format(TOCOPY))
+    print("COPY = {}\nCOPY_PLAYER = {}".format(TOCOPY, COPY_PLAYER))
     print("USE_MODEL = {}\nOUTPUT_FILE = {}".format(USE_MODEL, OUTPUT_FILE))
 
 
