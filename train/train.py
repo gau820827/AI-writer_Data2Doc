@@ -463,11 +463,11 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
 
         if epo % save_model == 0:
             torch.save(encoder.state_dict(),
-                    "{}_encoder_{}".format(OUTPUT_FILE, iteration))
+                       "models/{}_encoder_{}".format(OUTPUT_FILE, iteration))
             torch.save(decoder.state_dict(),
-                    "{}_decoder_{}".format(OUTPUT_FILE, iteration))
+                       "models/{}_decoder_{}".format(OUTPUT_FILE, iteration))
             torch.save(loss_optimizer.state_dict(),
-                    "models/{}_optim_{}".format(OUTPUT_FILE, iteration))
+                       "models/{}_optim_{}".format(OUTPUT_FILE, iteration))
             print("Save the model at iter {}".format(iteration))
 
     return model.encoder, model.decoder
