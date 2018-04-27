@@ -3,7 +3,7 @@ import torch
 file_loc = '../boxscore-data/rotowire/'
 use_cuda = torch.cuda.is_available()
 
-MAX_LENGTH = 704
+MAX_LENGTH = 800
 LAYER_DEPTH = 2
 MAX_SENTENCES = None
 
@@ -14,7 +14,8 @@ USE_MODEL = None
 # './models/long3_optim_36040']
 # Parameter for training
 EMBEDDING_SIZE = 600
-LR = 0.003
+LR = 0.01  # Adagrad
+# LR = 0.003  # Adam
 ITER_TIME = 220
 BATCH_SIZE = 2
 GRAD_CLIP = 5

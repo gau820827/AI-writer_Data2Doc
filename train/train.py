@@ -12,7 +12,7 @@ from model import docEmbedding, Seq2Seq
 from model import EncoderLIN, EncoderBiLSTM
 from model import HierarchicalEncoderRNN, HierarchicalBiLSTM
 from model import AttnDecoderRNN, HierarchicalDecoder
-from util import gettime, load_model, showAttention
+from util import gettime, load_model, show_triplets
 from util import PriorityQueue
 
 from settings import file_loc, use_cuda, MAX_LENGTH, USE_MODEL
@@ -397,13 +397,11 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         decoder.cuda()
 
     # Choose optimizer
-    # loss_optimizer = optim.Adagrad(list(encoder.parameters()) + list(decoder.parameters()),
-    #                               lr=learning_rate, lr_decay=0, weight_decay=0)
+    loss_optimizer = optim.Adagrad(list(encoder.parameters()) + list(decoder.parameters()),
+                                   lr=learning_rate, lr_decay=0, weight_decay=0)
 
-    loss_optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()),
-                                lr=learning_rate)
-
-    # loss_optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=learning_rate)
+    # loss_optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()),
+    #                             lr=learning_rate)
 
     if use_model is not None:
         encoder = load_model(encoder, use_model[0])
@@ -431,6 +429,9 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
             iteration += 1
             data, idx_data = get_batch(dt)
             rt, re, rm, summary = idx_data
+
+            # Debugging: check the input triplets
+            # show_triplets(data[0][0])
 
             # Add paddings
             rt = addpaddings(rt)
@@ -789,7 +790,6 @@ def main():
 
     # For Training
     train_data, train_lang = loaddata(file_loc, 'train')
-    train_data[:200]
     train_data = data2index(train_data, train_lang)
     encoder, decoder = train(train_data, train_lang,
                              embedding_size=embedding_size, learning_rate=learning_rate,

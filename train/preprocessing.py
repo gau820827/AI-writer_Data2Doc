@@ -111,9 +111,9 @@ def doc2vec(doc):
     """
     triplets = []
 
-    # A helper funtion to make triplet
     def maketriplets(doc, key, ignore, title):
-        """
+        """A helper funtion to make triplet.
+
         Args:
             doc:
                 {'box_score':
@@ -156,11 +156,11 @@ def doc2vec(doc):
 
     for k in keys:
         if k == 'box_score':
-            ignore = ['FIRST_NAME', 'SECOND_NAME', 'PLAYER_NAME']
+            ignore = []
+            # ignore = ['FIRST_NAME', 'SECOND_NAME', 'PLAYER_NAME']
             title = 'PLAYER_NAME'
             new_triplets = maketriplets(doc, k, ignore, title)
             triplets += new_triplets
-
 
         elif k in ['vis_line', 'home_line']:
             ignore = ['TEAM-NAME']
