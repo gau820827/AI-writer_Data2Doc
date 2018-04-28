@@ -10,7 +10,7 @@ We use Rotowire [dataset](https://github.com/harvardnlp/boxscore-data) for train
 
 ## Basic Usage
 
-1. First extract the dataset, using `tar -jxvf boxscore/rotowire.tar.bz2`.
+1. First extract the dataset, using `tar -jxvf boxscore-data/rotowire.tar.bz2`.
 2. Go to directory train/, using `cd train`
 3. (Optional) Train the model, using `python3 train.py`.
 4. Generate some text, using `python3 small_evaluate.py`
