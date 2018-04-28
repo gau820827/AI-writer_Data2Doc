@@ -1,5 +1,4 @@
 """This is the file for main model."""
-import time
 
 import torch
 import torch.nn as nn
@@ -68,7 +67,7 @@ class docEmbedding(nn.Module):
 
 
 class HierarchicalLIN(nn.Module):
-    def __init__(self, hidden_size, local_embed,):
+    def __init__(self, hidden_size, local_embed):
         super(HierarchicalLIN, self).__init__()
         self.LocalEncoder = EncoderLIN(hidden_size, local_embed, level='local')
         self.GlobalEncoder = EncoderLIN(hidden_size, None, level='global')
@@ -106,7 +105,8 @@ class EncoderLIN(nn.Module):
 
         # hiddens (max_length, batch, hidden size)
         # let inp: (batch, seq_len, hidden)
-        hiddens = Variable(torch.zeros(seq_len, n_batch, self.hidden_size))
+        hiddens = Variable(torch.zeros(seq_len, n_batch, self.hidden_size),
+                           requires_grad=False)
         hiddens = hiddens.cuda() if use_cuda else hiddens
         output = hidden
 
@@ -118,7 +118,7 @@ class EncoderLIN(nn.Module):
         return hiddens, output.unsqueeze(0)
 
     def initHidden(self, batch_size):
-        result = Variable(torch.zeros(batch_size, self.hidden_size))
+        result = Variable(torch.zeros(batch_size, self.hidden_size), requires_grad=False)
         if use_cuda:
             return result.cuda()
         else:
@@ -126,7 +126,7 @@ class EncoderLIN(nn.Module):
 
 
 class HierarchicalEncoderRNN(nn.Module):
-    def __init__(self, hidden_size, local_embed,):
+    def __init__(self, hidden_size, local_embed):
         super(HierarchicalEncoderRNN, self).__init__()
         self.LocalEncoder = EncoderRNN(hidden_size, local_embed, level='local')
         self.GlobalEncoder = EncoderRNN(hidden_size, None, level='global')
@@ -169,7 +169,7 @@ class EncoderRNN(nn.Module):
 
 class HierarchicalBiLSTM(nn.Module):
     """"""
-    def __init__(self, hidden_size, local_embed,):
+    def __init__(self, hidden_size, local_embed):
         super(HierarchicalBiLSTM, self).__init__()
         self.LocalEncoder = EncoderBiLSTM(hidden_size, local_embed, level='local')
         self.GlobalEncoder = EncoderBiLSTM(hidden_size, None, level='global')
