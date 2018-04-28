@@ -27,13 +27,13 @@ SAVE_MODEL = 5
 
 # Choose models
 
-# ENCODER_STYLE = 'LIN'
+ENCODER_STYLE = 'HierarchicalLIN'
 # ENCODER_STYLE = 'BiLSTM'
 # ENCODER_STYLE = 'RNN'
 # DECODER_STYLE = 'RNN'
 
 # ENCODER_STYLE = 'HierarchicalBiLSTM'
-ENCODER_STYLE = 'HierarchicalRNN'
+# ENCODER_STYLE = 'HierarchicalRNN'
 DECODER_STYLE = 'HierarchicalRNN'
 OUTPUT_FILE = 'copy'
 COPY_PLAYER = True

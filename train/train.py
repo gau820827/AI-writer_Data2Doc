@@ -10,7 +10,7 @@ from preprocessing import data_iter
 from dataprepare import loaddata, data2index
 from model import docEmbedding, Seq2Seq
 from model import EncoderLIN, EncoderBiLSTM
-from model import HierarchicalEncoderRNN, HierarchicalBiLSTM
+from model import HierarchicalEncoderRNN, HierarchicalBiLSTM, HierarchicalLIN
 from model import AttnDecoderRNN, HierarchicalDecoder
 from util import gettime, load_model, show_triplets
 from util import PriorityQueue
@@ -106,6 +106,7 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
     MAX_BLOCK, blocks_lens = find_max_block_numbers(batch_length, langs, rm)
 
     inputs = {"rt": rt, "re": re, "rm": rm}
+
     LocalEncoder = encoder.LocalEncoder
     GlobalEncoder = encoder.GlobalEncoder
 
@@ -157,7 +158,6 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
     local_encoder_outputs = local_encoder_outputs.contiguous().view(batch_length * len(blocks_len),
                                                                     input_length // len(blocks_len),
                                                                     embedding_size)
-
     for di in range(target_length):
         # Feed the global decoder
         if di == 0 or summary[0, di].data[0] == BLK_TOKEN:
@@ -378,6 +378,9 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
     elif encoder_style == 'HierarchicalBiLSTM':
         encoder_args = {"hidden_size": embedding_size, "local_embed": emb}
         encoder = HierarchicalBiLSTM(**encoder_args)
+    elif encoder_style == 'HierarchicalLIN':
+        encoder_args = {"hidden_size": embedding_size, "local_embed": emb}
+        encoder = HierarchicalLIN(**encoder_args)
     else:
         # initialize hierarchical encoder rnn, (both global and local)
         encoder_args = {"hidden_size": embedding_size, "local_embed": emb}

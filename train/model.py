@@ -67,6 +67,13 @@ class docEmbedding(nn.Module):
                 layer.bias.data.fill_(0)
 
 
+class HierarchicalLIN(nn.Module):
+    def __init__(self, hidden_size, local_embed,):
+        super(HierarchicalLIN, self).__init__()
+        self.LocalEncoder = EncoderLIN(hidden_size, local_embed, level='local')
+        self.GlobalEncoder = EncoderLIN(hidden_size, None, level='global')
+
+
 class EncoderLIN(nn.Module):
     """This is the linear encoder for the box score.
 
@@ -76,58 +83,39 @@ class EncoderLIN(nn.Module):
     representations to initialize the decoder.
 
     """
-    def __init__(self, hidden_size, embedding_layer):
+    def __init__(self, hidden_size, embedding_layer, level='local'):
         super(EncoderLIN, self).__init__()
+        self.level = level
         self.hidden_size = hidden_size
-        self.embedding = embedding_layer
+        if self.level == 'local':
+            self.embedding = embedding_layer
         self.avgpool = nn.AvgPool1d(3, stride=2, padding=1)
 
-    def forward(self, rt, re, rm, hidden):
-        embedded = self.embedding(rt, re, rm)
+    def forward(self, inputs, hidden):
+        # rt (n_batch, seq_len)
+        if self.level == 'local':
+            n_batch = inputs['rt'].size()[0]
+            seq_len = inputs['rt'].size()[1]
+            inp = self.embedding(inputs['rt'], inputs['re'], inputs['rm'])
+            # embedded (n_batch, seq_len, emb_dim)
+        else:
+            # global inp: MAX_BLOCK, batch_length, input_length
+            seq_len = inputs['local_hidden_states'].size()[0]
+            n_batch = inputs['local_hidden_states'].size()[1]
+            inp = inputs['local_hidden_states'].permute(1, 0, 2)
 
-        hiddens = Variable(torch.zeros(rt.size()[1], rt.size()[0], self.hidden_size))
+        # hiddens (max_length, batch, hidden size)
+        # let inp: (batch, seq_len, hidden)
+        hiddens = Variable(torch.zeros(seq_len, n_batch, self.hidden_size))
         hiddens = hiddens.cuda() if use_cuda else hiddens
-
         output = hidden
 
-        for ei in range(rt.size()[1]):
-            output = torch.cat((embedded[:, ei, :], output), dim=1)
+        for ei in range(seq_len):
+            output = torch.cat((inp[:, ei, :], output), dim=1)
             output = self.avgpool(output.unsqueeze(1))
             output = output.squeeze(1)
             hiddens[ei, :, :] = output
         return hiddens, output.unsqueeze(0)
-
-    def initHidden(self, batch_size):
-        result = Variable(torch.zeros(batch_size, self.hidden_size))
-        if use_cuda:
-            return result.cuda()
-        else:
-            return result
-
-
-class GlobalEncoderLIN(nn.Module):
-    """
-    Global Encoder:
-        h_b_g = f(h_(b-1)_g, h_b_l)
-        receives:
-            1. last time stamp in for a block at local hidden state
-            2. previous time stamp of global hidden state
-    """
-    def __init__(self, hidden_size, embedding_layer):
-        super(GlobalEncoderLIN, self).__init__()
-        self.hidden_size = hidden_size
-        self.local_encoder = embedding_layer
-        self.avgpool = nn.AvgPool1d(3, stride=2, padding=1)
-
-    def forward(self, rt, re, rm, hidden):
-        """
-        Ken edited:
-
-        """
-        embedded = self.embedding(rt, re, rm)
-        output = torch.cat((embedded, hidden), dim=1)
-        output = self.avgpool(output.view(-1, 1, 2 * self.hidden_size))
-        return output.squeeze(1)
 
     def initHidden(self, batch_size):
         result = Variable(torch.zeros(batch_size, self.hidden_size))
@@ -160,11 +148,11 @@ class EncoderRNN(nn.Module):
         # gru needs (seq_len, n_batch, emb_dim)
         if self.level == 'local':
             # local encoder: input is (rt, re, rm)
-            embedded = self.embedding(inputs["rt"], inputs["re"], inputs["rm"])
+            embedded = self.embedding(inputs['rt'], inputs['re'], inputs['rm'])
             inp = embedded.permute(1, 0, 2)
         else:
             # global encoder: input is local_hidden_states
-            inp = inputs["local_hidden_states"]
+            inp = inputs['local_hidden_states']
         output, hidden = self.gru(inp, hidden)
         # output shape (seq_len, batch, hidden_size * num_directions)
         # 1. hidden is the at t = seq_len
