@@ -226,33 +226,27 @@ def Plain_seq_train(rt, re, rm, summary, encoder, decoder,
     loss = 0
 
     # Encoding
-    if ENCODER_STYLE == 'BiLSTM':
-        init_hidden = encoder.initHidden(batch_length)
-        encoder_hidden, encoder_hiddens = encoder(rt, re, rm, init_hidden)
+    init_hidden = encoder.initHidden(batch_length)
+    inputs = {"rt": rt, "re": re, "rm": rm}
+    encoder_outputs, encoder_hiddens = encoder(inputs, init_hidden)
 
-        # Store memory information
-        for ei in range(input_length):
-            encoder_outputs[:, ei] = encoder_hiddens[:, ei]
+    # encoder_outputs: (seq_len, batch_size, hidden_dim)
 
-    else:
-        encoder_hidden = encoder.initHidden(batch_length)
-        out, encoder_hidden = encoder(rt, re, rm, encoder_hidden)
 
-        # Store memory information
-        encoder_outputs = out.permute(1, 0, 2)
-
-        # Get the final hidden state
-        encoder_hidden = out[-1, :]
+    context_vec = encoder_outputs[-1, :, :]
+    # context_vec: (batch_size, hidden_dim)
+    encoder_outputs = encoder_outputs.permute(1,0,2)
+    
 
     decoder_hidden = decoder.initHidden(batch_length)
-    decoder_hidden[0, :, :] = encoder_hidden  # might be zero
-    decoder_input = Variable(torch.LongTensor(batch_length).zero_())
+    decoder_hidden[0, :, :] = context_vec  # might be zero
+    decoder_input = Variable(torch.LongTensor(batch_length).zero_(), requires_grad=False)
     decoder_input = decoder_input.cuda() if use_cuda else decoder_input
 
     # Feed the target as the next input
     for di in range(target_length):
 
-        decoder_output, decoder_hidden, decoder_context, decoder_attention = decoder(
+        decoder_output, decoder_hidden, decoder_context, decoder_attention, pgen = decoder(
 
             decoder_input, decoder_hidden, encoder_outputs)
 
@@ -261,7 +255,6 @@ def Plain_seq_train(rt, re, rm, summary, encoder, decoder,
             for b in range(rm.shape[0]):
                 for i in range(decoder_attention.shape[2]):
                     idx[b, rm.data[b, i], i] = 1
-
             # ii = rm.unsqueeze(1)
             # ii = ii.expand(-1,decoder_output.shape[1],-1)
             # idx.scatter_(1, ii.data, torch.ones(idx.shape))
