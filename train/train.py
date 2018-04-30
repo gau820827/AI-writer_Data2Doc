@@ -9,7 +9,7 @@ from torch import optim
 from preprocessing import data_iter
 from dataprepare import loaddata, data2index
 from model import docEmbedding, Seq2Seq
-from model import EncoderLIN, EncoderBiLSTM
+from model import EncoderLIN, EncoderBiLSTM, EncoderBiLSTMMaxPool
 from model import HierarchicalEncoderRNN, HierarchicalBiLSTM
 from model import AttnDecoderRNN, HierarchicalDecoder
 from util import gettime, load_model, show_triplets
@@ -17,7 +17,7 @@ from util import PriorityQueue
 
 from settings import file_loc, use_cuda, USE_MODEL
 from settings import EMBEDDING_SIZE, LR, ITER_TIME, BATCH_SIZE, GRAD_CLIP
-from settings import MAX_SENTENCES, ENCODER_STYLE, DECODER_STYLE, TOCOPY
+from settings import MAX_SENTENCES, ENCODER_STYLE, DECODER_STYLE, TOCOPY, MAX_TRAIN_NUM
 from settings import GET_LOSS, SAVE_MODEL, OUTPUT_FILE, COPY_PLAYER
 
 import numpy as np
@@ -368,6 +368,8 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         encoder = EncoderLIN(embedding_size, emb)
     elif encoder_style == 'BiLSTM':
         encoder = EncoderBiLSTM(embedding_size, emb)
+    elif encoder_style == 'BiLSTMMax':
+        encoder = EncoderBiLSTMMaxPooling(embedding_size, emb)
     elif encoder_style == 'HierarchicalBiLSTM':
         encoder_args = {"hidden_size": embedding_size, "local_embed": emb}
         encoder = HierarchicalBiLSTM(**encoder_args)
@@ -449,7 +451,7 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
 
             # Zero the gradient
             loss_optimizer.zero_grad()
-
+            model.train()
             # calculate loss of "a batch of input sequence"
             loss = sequenceloss(rt, re, rm, summary, model)
 
@@ -461,7 +463,10 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
 
             # Get the average loss on the sentences
             target_length = summary.size()[1]
-            total_loss += loss.data[0] / target_length
+            if float(torch.__version__[:3])>0.3:
+                total_loss += loss.item()
+            else:
+                total_loss += loss.data[0]
 
             # Print the information and save model
             if iteration % get_loss == 0:
@@ -784,6 +789,8 @@ def main():
 
     # For Training
     train_data, train_lang = loaddata(file_loc, 'train')
+    if MAX_TRAIN_NUM is not None:
+        train_data = train_data[:MAX_TRAIN_NUM]
     train_data = data2index(train_data, train_lang)
     encoder, decoder = train(train_data, train_lang,
                              embedding_size=embedding_size, learning_rate=learning_rate,
