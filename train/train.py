@@ -220,7 +220,7 @@ def Plain_seq_train(rt, re, rm, summary, encoder, decoder,
     input_length = rt.size()[1]
     target_length = summary.size()[1]
 
-    encoder_outputs = Variable(torch.zeros(batch_length, input_length, embedding_size))
+    encoder_outputs = Variable(torch.zeros(batch_length, input_length, embedding_size), requires_grad=False)
     encoder_outputs = encoder_outputs.cuda() if use_cuda else encoder_outputs
 
     loss = 0
@@ -251,17 +251,47 @@ def Plain_seq_train(rt, re, rm, summary, encoder, decoder,
             decoder_input, decoder_hidden, encoder_outputs)
 
         if decoder.copy:
-            idx = Variable(torch.zeros([decoder_output.shape[0], decoder_output.shape[1], decoder_attention.shape[2]]), requires_grad=False)
+            batch_size = rm.shape[0]
+            batch_seq_length = rm.shape[1]
+
+            
+            prob_sp = Variable(torch.zeros([batch_size, decoder_output.shape[1], 1]), requires_grad = False)
+            prob_sp = prob_sp.cuda() if use_cuda else prob_sp
+
+            for b in range(batch_size):
+                idx_i = torch.zeros((2, batch_seq_length), dtype=torch.long)
+                idx_i[0,:] = rm.data[b,:]
+                idx_i[1, :] = torch.from_numpy(np.arange(batch_seq_length)).reshape(1,-1)
+                
+                print(idx_i.shape)
+                idx_sparse = torch.sparse.FloatTensor(idx_i, 
+                                torch.ones([batch_seq_length]),
+                                torch.Size([decoder_output.shape[1], batch_seq_length]))
+                idx_sparse = idx_sparse.cuda() if use_cuda else idx_sparse
+                print(idx_sparse)
+                print(decoder_attention.permute(0, 2, 1)[b,:,:].shape)
+                
+                tmp = idx_sparse.mm(decoder_attention.permute(0, 2, 1)[b,:,:])
+                print(tmp)
+                prob_sp[b, :,:] = tmp
+            print(torch.sum(prob_sp, dim=1))
+
+            idx = Variable(torch.zeros([decoder_output.shape[0], decoder_output.shape[1],           decoder_attention.shape[2]]), requires_grad=False)
             for b in range(rm.shape[0]):
                 for i in range(decoder_attention.shape[2]):
                     idx[b, rm.data[b, i], i] = 1
+            prob = torch.bmm(idx, decoder_attention.cpu().permute(0, 2, 1))
+            prob = torch.bmm(idx, decoder_attention.cpu().permute(0, 2, 1))
+            prob = prob.cuda() if use_cuda else prob
+            
+            print(torch.sum(prob - prob_sp))
+            exit(1)
             # ii = rm.unsqueeze(1)
             # ii = ii.expand(-1,decoder_output.shape[1],-1)
             # idx.scatter_(1, ii.data, torch.ones(idx.shape))
             # prob[b, idx] += (1-pgen[b])*decoder_attention[b,i]
 
-            prob = torch.bmm(idx, decoder_attention.cpu().permute(0, 2, 1))
-            prob = prob.cuda() if use_cuda else prob
+            
 
             # implement logsumexp
             # print(torch.sum(prob,1))
