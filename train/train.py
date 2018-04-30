@@ -188,6 +188,20 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
             # Add up to the pgen probability matrix
             prob = prob.scatter_add(1, rm, combine_attn_weights)
 
+
+            prob = Variable(torch.zeros([decoder_output.shape[0], decoder_output.shape[1]]), requires_grad=False)
+            prob = prob.cuda() if use_cuda else prob
+            
+            for b in range(rm.shape[0]):
+                words = set(rm.data.cpu().numpy()[b,:])
+                for i in words:
+                    w = torch.LongTensor([i])
+                    w = w.cuda() if use_cuda else w
+                    idx = (rm.data[b, :] == w)
+                    word_attn = decoder_attention.permute(0, 2, 1)[b,:,0]
+                    prob[b,i] += torch.sum(word_attn[idx])
+            prob = torch.mul(prob, (1 - pgen))
+            decoder_output_new = (decoder_output.exp() + prob).log()
             # ctr = 0
             # for li, l_attn in enumerate(l_attn_weights):
             #     print(l_attn.size())
@@ -251,29 +265,17 @@ def Plain_seq_train(rt, re, rm, summary, encoder, decoder,
             decoder_input, decoder_hidden, encoder_outputs)
 
         if decoder.copy:
-            idx = Variable(torch.zeros([decoder_output.shape[0], decoder_output.shape[1], decoder_attention.shape[2]]), requires_grad=False)
-            for b in range(rm.shape[0]):
-                for i in range(decoder_attention.shape[2]):
-                    idx[b, rm.data[b, i], i] = 1
-            # ii = rm.unsqueeze(1)
-            # ii = ii.expand(-1,decoder_output.shape[1],-1)
-            # idx.scatter_(1, ii.data, torch.ones(idx.shape))
-            # prob[b, idx] += (1-pgen[b])*decoder_attention[b,i]
-
-            prob = torch.bmm(idx, decoder_attention.cpu().permute(0, 2, 1))
+            prob = Variable(torch.zeros([decoder_output.shape[0], decoder_output.shape[1]]), requires_grad=False)
             prob = prob.cuda() if use_cuda else prob
-
-            # implement logsumexp
-            # print(torch.sum(prob,1))
-            # decoder_output = decoder_output.unsqueeze(2)
-            # combine_logs = torch.cat([decoder_output, prob.log()], 2)
-            # val ,idx = torch.max ( combine_logs, 2)
-            # l1 = combine_logs[:,:,0] - val
-            # l2 = combine_logs[:,:,1] - val
-
-            # decoder_output_new =  val + (l1.exp() + (1-pgen)*l2.exp()).log()
-            # pure calculation
-            prob = prob.squeeze(2)
+            
+            for b in range(rm.shape[0]):
+                words = set(rm.data.cpu().numpy()[b,:])
+                for i in words:
+                    w = torch.LongTensor([i])
+                    w = w.cuda() if use_cuda else w
+                    idx = (rm.data[b, :] == w)
+                    word_attn = decoder_attention.permute(0, 2, 1)[b,:,0]
+                    prob[b,i] += torch.sum(word_attn[idx])
             prob = torch.mul(prob, (1 - pgen))
             decoder_output_new = (decoder_output.exp() + prob).log()
         else:
@@ -470,8 +472,8 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
 
             # Print the information and save model
             if iteration % get_loss == 0:
-                print("Time {}, iter {}, avg loss = {:.4f}".format(
-                    gettime(start), iteration, total_loss / get_loss))
+                print("Time {}, iter {}, Seq_len:{}, avg loss = {:.4f}".format(
+                    gettime(start), iteration, target_length, total_loss / get_loss))
                 total_loss = 0
 
         if epo % save_model == 0:
