@@ -316,22 +316,14 @@ def addpaddings(tokens):
         tokens[i] += [PAD_TOKEN for i in range(max_length - len(tokens[i]))]
     return tokens
 
-
-def train(train_set, langs, embedding_size=600, learning_rate=0.01,
-          iter_time=10, batch_size=32, get_loss=GET_LOSS, save_model=SAVE_MODEL,
-          encoder_style=ENCODER_STYLE, decoder_style=DECODER_STYLE,
-          use_model=USE_MODEL):
-    """The training procedure."""
-    # Set the timer
-    start = time.time()
-
+def model_initialization(encoder_style, decoder_style, langs, embedding_size, learning_rate, use_model):
     # Initialize the model
     emb = docEmbedding(langs['rt'].n_words, langs['re'].n_words,
                        langs['rm'].n_words, embedding_size)
     emb.init_weights()
 
     # Choose encoder style
-    # TODO:: Set up a choice for hierarchical or not
+    # TODO: Set up a choice for hierarchical or not
     if encoder_style == 'LIN':
         encoder = EncoderLIN(embedding_size, emb)
     elif encoder_style == 'BiLSTM':
@@ -373,6 +365,21 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         encoder = load_model(encoder, use_model[0])
         decoder = load_model(decoder, use_model[1])
         loss_optimizer.load_state_dict(torch.load(use_model[2]))
+
+    return encoder, decoder, loss_optimizer, train_func
+
+
+def train(train_set, langs, embedding_size=600, learning_rate=0.01,
+          iter_time=10, batch_size=32, get_loss=GET_LOSS, save_model=SAVE_MODEL,
+          encoder_style=ENCODER_STYLE, decoder_style=DECODER_STYLE,
+          use_model=USE_MODEL):
+    """The training procedure."""
+    # Set the timer
+    start = time.time()
+
+    encoder, decoder, loss_optimizer, train_func = model_initialization(encoder_style, 
+                                            decoder_style, langs, 
+                                            embedding_size, learning_rate, use_model)
 
     criterion = nn.NLLLoss()
 
