@@ -22,7 +22,12 @@ class Seq2Seq(object):
         return self.train_func(rt, re, rm, summary,
                                self.encoder, self.decoder,
                                self.criterion, self.embedding_size, self.langs)
-
+    def train(self):
+        self.encoder.train()
+        self.decoder.train()
+    def eval(self):
+        self.encoder.eval()
+        self.decoder.eval()
 
 class docEmbedding(nn.Module):
     """The class for embedding records.
@@ -171,8 +176,8 @@ class HierarchicalBiLSTM(nn.Module):
     """"""
     def __init__(self, hidden_size, local_embed):
         super(HierarchicalBiLSTM, self).__init__()
-        self.LocalEncoder = EncoderBiLSTM(hidden_size, local_embed, level='local')
-        self.GlobalEncoder = EncoderBiLSTM(hidden_size, None, level='global')
+        self.LocalEncoder = EncoderBiLSTMMaxPool(hidden_size, local_embed, level='local')
+        self.GlobalEncoder = EncoderBiLSTMMaxPool(hidden_size, None, level='global')
 
 
 class EncoderBiLSTM(nn.Module):
@@ -197,11 +202,49 @@ class EncoderBiLSTM(nn.Module):
             inp = inputs['local_hidden_states']
 
         # lstm needs: (seq_len, batch, input_size)
-        bilstm_outs, self.hidden = self.bilstm(inp, hidden)
+        bilstm_outs, nh = self.bilstm(inp, hidden)
         # bilstm_outs: (seq_len, batch, hidden_size * num_directions )
-        output = torch.transpose(bilstm_outs, 0, 1)
-        output = torch.transpose(output, 1, 2)
-        output = F.tanh(output)
+        #output = torch.transpose(bilstm_outs, 0, 1)
+        #output = torch.transpose(output, 1, 2)
+        #output = F.tanh(output)
+        # output = F.max_pool1d(output, output.size(2)).squeeze(2)
+        # Ken modified the output order (original is output, bilstm_out)
+        return bilstm_outs, nh
+
+    def initHidden(self, batch_size):
+        forward = Variable(torch.zeros(2 * self.n_layers, batch_size, self.hidden_size // 2), requires_grad=False)
+        backward = Variable(torch.zeros(2 * self.n_layers, batch_size, self.hidden_size // 2), requires_grad=False)
+        if use_cuda:
+            return (forward.cuda(), backward.cuda())
+        else:
+            return (forward, backward)
+
+class EncoderBiLSTMMaxPool(nn.Module):
+    """Vanilla encoder using pure LSTM."""
+    def __init__(self, hidden_size, embedding_layer, n_layers=LAYER_DEPTH, level='local'):
+        super(EncoderBiLSTMMaxPool, self).__init__()
+        self.level = level
+        self.n_layers = n_layers
+        self.hidden_size = hidden_size
+        if self.level == 'local':
+            self.embedding = embedding_layer
+        self.bilstm = nn.LSTM(hidden_size, hidden_size // 2, num_layers=n_layers, bidirectional=True)
+
+    def forward(self, inputs, hidden):
+        # embedded is of size (n_batch, seq_len, emb_dim)
+        if self.level == 'local':
+            embedded = self.embedding(inputs['rt'], inputs['re'], inputs['rm'])
+            # aligned it to permute
+            # embedded = torch.transpose(embedded, 0, 1)
+            inp = embedded.permute(1, 0, 2)
+        else:
+            inp = inputs['local_hidden_states']
+
+        # lstm needs: (seq_len, batch, input_size)
+        bilstm_outs, nh = self.bilstm(inp, hidden)
+        # bilstm_outs: (seq_len, batch, hidden_size * num_directions )
+        output = bilstm_outs.permute(1,2,0)
+        # bilstm_outs: (batch, hidden_size * num_directions, seq_len)        
         output = F.max_pool1d(output, output.size(2)).squeeze(2)
         # Ken modified the output order (original is output, bilstm_out)
         return bilstm_outs, output
@@ -213,7 +256,6 @@ class EncoderBiLSTM(nn.Module):
             return (forward.cuda(), backward.cuda())
         else:
             return (forward, backward)
-
 
 class PGenLayer(nn.Module):
     def __init__(self, emb_dim, hidden_size, enc_dim):
@@ -269,11 +311,11 @@ class AttnDecoderRNN(nn.Module):
 
         if self.copy:
             pgen = self.pgen(embedded, output, context)
-            output = F.log_softmax(self.out(torch.cat((output, context), 1))) + pgen.log()
+            output = F.log_softmax(self.out(torch.cat((output, context), 1)), dim=1) + pgen.log()
         else:
             pgen = 0
             # Output the final distribution
-            output = F.log_softmax(self.out(torch.cat((output, context), 1)))
+            output = F.log_softmax(self.out(torch.cat((output, context), 1)), dim=1)
 
         return output, nh, context, attn_weights, pgen
 
@@ -405,10 +447,10 @@ class LocalAttnDecoderRNN(nn.Module):
 
         if self.copy:
             pgen = self.pgen(embedded, output, context)
-            output = F.log_softmax(self.out(torch.cat((output, context), 1))) + pgen.log()
+            output = F.log_softmax(self.out(torch.cat((output, context), 1)), dim=1) + pgen.log()
         else:
             pgen = Variable(torch.zeros(1, 1)).cuda() if use_cuda else Variable(torch.zeros(1, 1))
-            output = F.log_softmax(self.out(torch.cat((output, context), 1)))
+            output = F.log_softmax(self.out(torch.cat((output, context), 1)), dim=1)
 
         return output, nh, context, attn_weights, pgen
 
@@ -447,7 +489,7 @@ class Attn(nn.Module):
         # print(attn_energies.size())
 
         # Normalize energies to weights in range 0 to 1, resize to B x 1 x seq_len
-        return F.softmax(attn_energies).unsqueeze(1)
+        return F.softmax(attn_energies, dim=1).unsqueeze(1)
 
     def score(self, hidden, encoder_outputs):
         # print('size of hidden: {}'.format(hidden.size()))
