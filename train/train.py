@@ -9,15 +9,15 @@ from torch import optim
 from preprocessing import data_iter
 from dataprepare import loaddata, data2index
 from model import docEmbedding, Seq2Seq
-from model import EncoderLIN, EncoderBiLSTM
-from model import HierarchicalEncoderRNN, HierarchicalBiLSTM, HierarchicalLIN
+from model import EncoderLIN, EncoderBiLSTM, EncoderBiLSTMMaxPool
+from model import HierarchicalEncoderRNN, HierarchicalBiLSTM
 from model import AttnDecoderRNN, HierarchicalDecoder
 from util import gettime, load_model, show_triplets
 from util import PriorityQueue
 
 from settings import file_loc, use_cuda, USE_MODEL
 from settings import EMBEDDING_SIZE, LR, ITER_TIME, BATCH_SIZE, GRAD_CLIP
-from settings import MAX_SENTENCES, ENCODER_STYLE, DECODER_STYLE, TOCOPY
+from settings import MAX_SENTENCES, ENCODER_STYLE, DECODER_STYLE, TOCOPY, MAX_TRAIN_NUM
 from settings import GET_LOSS, SAVE_MODEL, OUTPUT_FILE, COPY_PLAYER
 
 import numpy as np
@@ -188,21 +188,6 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
             # Add up to the pgen probability matrix
             prob = prob.scatter_add(1, rm, combine_attn_weights)
 
-            # ctr = 0
-            # for li, l_attn in enumerate(l_attn_weights):
-            #     print(l_attn.size())
-            #     idx = Variable(torch.zeros([l_output.shape[0], l_output.shape[1],
-            #                                l_attn.shape[0]]), requires_grad=False)
-
-            #     for b in range(rm.shape[0]):
-            #         for i in range(l_attn.shape[0]):
-            #             idx[b, rm.data[b, ctr + i], i] = 1
-
-            #     print(rm.data)
-            #     ctr += l_attn.shape[0]
-
-            #     prob += g_attn_weights[b, 0, li].cpu() * torch.bmm(idx, l_attn.cpu().permute(0,2,1)).squeeze(2)
-
             l_output_new = (l_output.exp() + (1 - pgen) * prob).log()
         else:
             l_output_new = l_output
@@ -226,63 +211,39 @@ def Plain_seq_train(rt, re, rm, summary, encoder, decoder,
     loss = 0
 
     # Encoding
-    if ENCODER_STYLE == 'BiLSTM':
-        init_hidden = encoder.initHidden(batch_length)
-        encoder_hidden, encoder_hiddens = encoder(rt, re, rm, init_hidden)
+    init_hidden = encoder.initHidden(batch_length)
+    inputs = {"rt": rt, "re": re, "rm": rm}
+    encoder_outputs, encoder_hiddens = encoder(inputs, init_hidden)
 
-        # Store memory information
-        for ei in range(input_length):
-            encoder_outputs[:, ei] = encoder_hiddens[:, ei]
+    # encoder_outputs: (seq_len, batch_size, hidden_dim)
 
-    else:
-        encoder_hidden = encoder.initHidden(batch_length)
-        out, encoder_hidden = encoder(rt, re, rm, encoder_hidden)
 
-        # Store memory information
-        encoder_outputs = out.permute(1, 0, 2)
-
-        # Get the final hidden state
-        encoder_hidden = out[-1, :]
+    context_vec = encoder_outputs[-1, :, :]
+    # context_vec: (batch_size, hidden_dim)
+    encoder_outputs = encoder_outputs.permute(1,0,2)
+    
 
     decoder_hidden = decoder.initHidden(batch_length)
-    decoder_hidden[0, :, :] = encoder_hidden  # might be zero
-    decoder_input = Variable(torch.LongTensor(batch_length).zero_())
+    decoder_hidden[0, :, :] = context_vec  # might be zero
+    decoder_input = Variable(torch.LongTensor(batch_length).zero_(), requires_grad=False)
     decoder_input = decoder_input.cuda() if use_cuda else decoder_input
 
     # Feed the target as the next input
     for di in range(target_length):
 
-        decoder_output, decoder_hidden, decoder_context, decoder_attention = decoder(
+        decoder_output, decoder_hidden, decoder_context, decoder_attention, pgen = decoder(
 
             decoder_input, decoder_hidden, encoder_outputs)
 
         if decoder.copy:
-            idx = Variable(torch.zeros([decoder_output.shape[0], decoder_output.shape[1], decoder_attention.shape[2]]), requires_grad=False)
-            for b in range(rm.shape[0]):
-                for i in range(decoder_attention.shape[2]):
-                    idx[b, rm.data[b, i], i] = 1
-
-            # ii = rm.unsqueeze(1)
-            # ii = ii.expand(-1,decoder_output.shape[1],-1)
-            # idx.scatter_(1, ii.data, torch.ones(idx.shape))
-            # prob[b, idx] += (1-pgen[b])*decoder_attention[b,i]
-
-            prob = torch.bmm(idx, decoder_attention.cpu().permute(0, 2, 1))
+            prob = Variable(torch.zeros(decoder_output.shape), requires_grad=False)
             prob = prob.cuda() if use_cuda else prob
 
-            # implement logsumexp
-            # print(torch.sum(prob,1))
-            # decoder_output = decoder_output.unsqueeze(2)
-            # combine_logs = torch.cat([decoder_output, prob.log()], 2)
-            # val ,idx = torch.max ( combine_logs, 2)
-            # l1 = combine_logs[:,:,0] - val
-            # l2 = combine_logs[:,:,1] - val
+            decoder_attention = decoder_attention.squeeze(1)
+            # reshape 
+            prob = prob.scatter_add(1, rm, decoder_attention)
 
-            # decoder_output_new =  val + (l1.exp() + (1-pgen)*l2.exp()).log()
-            # pure calculation
-            prob = prob.squeeze(2)
-            prob = torch.mul(prob, (1 - pgen))
-            decoder_output_new = (decoder_output.exp() + prob).log()
+            decoder_output_new = (decoder_output.exp() + (1-pgen)*prob).log()
         else:
             decoder_output_new = decoder_output
         loss += criterion(decoder_output_new, summary[:, di])
@@ -375,6 +336,8 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         encoder = EncoderLIN(embedding_size, emb)
     elif encoder_style == 'BiLSTM':
         encoder = EncoderBiLSTM(embedding_size, emb)
+    elif encoder_style == 'BiLSTMMax':
+        encoder = EncoderBiLSTMMaxPooling(embedding_size, emb)
     elif encoder_style == 'HierarchicalBiLSTM':
         encoder_args = {"hidden_size": embedding_size, "local_embed": emb}
         encoder = HierarchicalBiLSTM(**encoder_args)
@@ -388,7 +351,7 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
 
     # Choose decoder style and training function
     if decoder_style == 'HierarchicalRNN':
-        decoder = HierarchicalDecoder(embedding_size, langs['summary'].n_words, copy=False)
+        decoder = HierarchicalDecoder(embedding_size, langs['summary'].n_words)
         train_func = Hierarchical_seq_train
     else:
         decoder = AttnDecoderRNN(embedding_size, langs['summary'].n_words)
@@ -459,7 +422,7 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
 
             # Zero the gradient
             loss_optimizer.zero_grad()
-
+            model.train()
             # calculate loss of "a batch of input sequence"
             loss = sequenceloss(rt, re, rm, summary, model)
 
@@ -471,12 +434,15 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
 
             # Get the average loss on the sentences
             target_length = summary.size()[1]
-            total_loss += loss.data[0] / target_length
+            if float(torch.__version__[:3])>0.3:
+                total_loss += loss.item()
+            else:
+                total_loss += loss.data[0]
 
             # Print the information and save model
             if iteration % get_loss == 0:
-                print("Time {}, iter {}, avg loss = {:.4f}".format(
-                    gettime(start), iteration, total_loss / get_loss))
+                print("Time {}, iter {}, Seq_len:{}, avg loss = {:.4f}".format(
+                    gettime(start), iteration, target_length, total_loss / get_loss))
                 total_loss = 0
 
         if epo % save_model == 0:
@@ -794,6 +760,8 @@ def main():
 
     # For Training
     train_data, train_lang = loaddata(file_loc, 'train')
+    if MAX_TRAIN_NUM is not None:
+        train_data = train_data[:MAX_TRAIN_NUM]
     train_data = data2index(train_data, train_lang)
     encoder, decoder = train(train_data, train_lang,
                              embedding_size=embedding_size, learning_rate=learning_rate,
