@@ -240,7 +240,6 @@ def Plain_seq_train(rt, re, rm, summary, encoder, decoder,
             prob = prob.cuda() if use_cuda else prob
 
             decoder_attention = decoder_attention.squeeze(1)
-            # reshape 
             prob = prob.scatter_add(1, rm, decoder_attention)
 
             decoder_output_new = (decoder_output.exp() + (1-pgen)*prob).log()
@@ -364,7 +363,10 @@ def model_initialization(encoder_style, decoder_style, langs, embedding_size, le
     if use_model is not None:
         encoder = load_model(encoder, use_model[0])
         decoder = load_model(decoder, use_model[1])
-        loss_optimizer.load_state_dict(torch.load(use_model[2]))
+        if not use_cuda:
+            loss_optimizer.load_state_dict(torch.load(use_model[2], map_location=lambda storage, loc: storage))
+        else:
+            loss_optimizer.load_state_dict(torch.load(use_model[2]))
 
     return encoder, decoder, loss_optimizer, train_func
 
@@ -611,28 +613,23 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
     encoder_outputs = encoder_outputs.cuda() if use_cuda else encoder_outputs
 
     # Encoding
-    if encoder_style == 'BiLSTM':
-        init_hidden = encoder.initHidden(batch_length)
-        encoder_hidden, encoder_hiddens = encoder(rt, re, rm, init_hidden)
+    init_hidden = encoder.initHidden(batch_length)
+    inputs = {"rt": rt, "re": re, "rm": rm}    
+    encoder_outputs, encoder_hiddens = encoder(inputs, init_hidden)
+    
+    context_vec = encoder_outputs[-1, :, :]
+    # context_vec: (batch_size, hidden_dim)
+    encoder_outputs = encoder_outputs.permute(1,0,2)
 
-        # Store memory information
-        for ei in range(input_length):
-            encoder_outputs[:, ei] = encoder_hiddens[:, ei]
-
-    else:
-        encoder_hidden = encoder.initHidden(batch_length)
-        out, encoder_hidden = encoder(rt, re, rm, encoder_hidden)
-
-        # Store memory information
-        encoder_outputs = out.permute(1, 0, 2)
-
-        encoder_hidden = out[-1, :]
-
-    decoder_attentions = torch.zeros(target_length, input_length)
+    decoder_hidden = decoder.initHidden(batch_length)
+    decoder_hidden[0, :, :] = context_vec  # might be zero
+    decoder_input = Variable(torch.LongTensor(batch_length).zero_(), requires_grad=False)
+    decoder_input = decoder_input.cuda() if use_cuda else decoder_input
 
     # Initialize the Beam
     # Each Beam cell contains [prob, route, decoder_hidden, atten]
-    beams = [[0, [SOS_TOKEN], encoder_hidden, decoder_attentions]]
+    decoder_attentions = torch.zeros(target_length, input_length)
+    beams = [[0, [SOS_TOKEN], decoder_hidden, decoder_attentions]]
 
     # For each step
     for di in range(target_length):
@@ -652,20 +649,19 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
                 q.push(beam, prob)
                 continue
 
-            decoder_input = Variable(torch.LongTensor([decoder_input]))
+            decoder_input = Variable(torch.LongTensor([decoder_input]), requires_grad=False)
             decoder_input = decoder_input.cuda() if use_cuda else decoder_input
             decoder_output, decoder_hidden, decoder_context, decoder_attention, pgen = decoder(
                 decoder_input, decoder_hidden, encoder_outputs)
 
             if decoder.copy:
-                decoder_output = decoder_output.exp()
                 prob = Variable(torch.zeros(decoder_output.shape), requires_grad=False)
                 prob = prob.cuda() if use_cuda else prob
-                for i in range(decoder_attention.shape[2]):
-                    prob[:,rm[:,i]] += (1-pgen)*decoder_attention[:,0,i]
 
-                decoder_output_new = decoder_output + prob
-                decoder_output_new = decoder_output_new.log()
+                decoder_attention = decoder_attention.squeeze(1)
+                prob = prob.scatter_add(1, rm, decoder_attention)
+
+                decoder_output_new = (decoder_output.exp() + (1-pgen)*prob).log()
             else:
                 decoder_output_new = decoder_output
 
@@ -702,23 +698,31 @@ def evaluate(encoder, decoder, valid_set, lang,
     """The evaluate procedure."""
     # Get evaluate data
     valid_iter = data_iter(valid_set, batch_size=1, shuffle=True)
-    if use_cuda:
-        encoder.cuda()
-        decoder.cuda()
 
-    for iteration in range(iter_time):
+    iteration = 0
+    for dt in valid_iter:
 
         # Get data
-        data, idx_data = get_batch(next(valid_iter))
+        iteration += 1
+        data, idx_data = get_batch(dt)
         rt, re, rm, summary = idx_data
 
-        # For Encoding
-        rt = Variable(torch.LongTensor(rt))
-        re = Variable(torch.LongTensor(re))
-        rm = Variable(torch.LongTensor(rm))
+        # Debugging: check the input triplets
+        # show_triplets(data[0][0])
+
+        # Add paddings
+        rt = addpaddings(rt)
+        re = addpaddings(re)
+        rm = addpaddings(rm)
+
+        summary = addpaddings(summary)
+
+        rt = Variable(torch.LongTensor(rt), requires_grad=False)
+        re = Variable(torch.LongTensor(re), requires_grad=False)
+        rm = Variable(torch.LongTensor(rm), requires_grad=False)
 
         # For Decoding
-        summary = Variable(torch.LongTensor(summary))
+        summary = Variable(torch.LongTensor(summary), requires_grad=False)
 
         if use_cuda:
             rt, re, rm, summary = rt.cuda(), re.cuda(), rm.cuda(), summary.cuda()
@@ -729,6 +733,8 @@ def evaluate(encoder, decoder, valid_set, lang,
                                                          embedding_size, encoder_style,
                                                          beam_size)
 
+        print(decoder_attentions)
+        print(torch.sum(decoder_attentions,1))
         res = ' '.join(decoded_words[:-1])
         if verbose:
             print(res)
@@ -743,6 +749,7 @@ def evaluate(encoder, decoder, valid_set, lang,
         # print(' ')
 
         # showAttention(triplets, decoded_words, decoder_attentions)
+    return
 
 
 def showconfig():
