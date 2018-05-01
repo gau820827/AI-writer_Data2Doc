@@ -9,10 +9,11 @@ from settings import use_cuda, MAX_LENGTH, LAYER_DEPTH, TOCOPY
 
 
 class Seq2Seq(object):
-    def __init__(self, encoder, decoder, train_func, criterion, embedding_size, langs):
+    def __init__(self, encoder, decoder, train_func, decode_func, criterion, embedding_size, langs):
         self.encoder = encoder
         self.decoder = decoder
         self.train_func = train_func
+        self.decode_func = decode_func
         self.criterion = criterion
         self.embedding_size = embedding_size
         self.langs = langs
@@ -22,12 +23,21 @@ class Seq2Seq(object):
         return self.train_func(rt, re, rm, summary,
                                self.encoder, self.decoder,
                                self.criterion, self.embedding_size, self.langs)
+
     def train(self):
         self.encoder.train()
         self.decoder.train()
+    
     def eval(self):
         self.encoder.eval()
         self.decoder.eval()
+
+    def seq_decode(self, rt, re, rm, beam_size):
+        """The function to decode the sentences."""
+        return self.decode_func(rt, re, rm,
+                                self.encoder, self.decoder,
+                                self.embedding_size, self.langs, beam_size)
+
 
 class docEmbedding(nn.Module):
     """The class for embedding records.
