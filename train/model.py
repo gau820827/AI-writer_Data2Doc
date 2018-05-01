@@ -255,7 +255,7 @@ class EncoderBiLSTMMaxPool(nn.Module):
         # lstm needs: (seq_len, batch, input_size)
         bilstm_outs, nh = self.bilstm(inp, hidden)
         # bilstm_outs: (seq_len, batch, hidden_size * num_directions )
-        output = torch.permute(bilstm_outs, 1,2,0)
+        output = bilstm_outs.permute(1,2,0)
         # bilstm_outs: (batch, hidden_size * num_directions, seq_len)        
         output = F.max_pool1d(output, output.size(2)).squeeze(2)
         # Ken modified the output order (original is output, bilstm_out)

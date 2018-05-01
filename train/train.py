@@ -188,35 +188,6 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
             # Add up to the pgen probability matrix
             prob = prob.scatter_add(1, rm, combine_attn_weights)
 
-
-            prob = Variable(torch.zeros([decoder_output.shape[0], decoder_output.shape[1]]), requires_grad=False)
-            prob = prob.cuda() if use_cuda else prob
-            
-            for b in range(rm.shape[0]):
-                words = set(rm.data.cpu().numpy()[b,:])
-                for i in words:
-                    w = torch.LongTensor([i])
-                    w = w.cuda() if use_cuda else w
-                    idx = (rm.data[b, :] == w)
-                    word_attn = decoder_attention.permute(0, 2, 1)[b,:,0]
-                    prob[b,i] += torch.sum(word_attn[idx])
-            prob = torch.mul(prob, (1 - pgen))
-            decoder_output_new = (decoder_output.exp() + prob).log()
-            # ctr = 0
-            # for li, l_attn in enumerate(l_attn_weights):
-            #     print(l_attn.size())
-            #     idx = Variable(torch.zeros([l_output.shape[0], l_output.shape[1],
-            #                                l_attn.shape[0]]), requires_grad=False)
-
-            #     for b in range(rm.shape[0]):
-            #         for i in range(l_attn.shape[0]):
-            #             idx[b, rm.data[b, ctr + i], i] = 1
-
-            #     print(rm.data)
-            #     ctr += l_attn.shape[0]
-
-            #     prob += g_attn_weights[b, 0, li].cpu() * torch.bmm(idx, l_attn.cpu().permute(0,2,1)).squeeze(2)
-
             l_output_new = (l_output.exp() + (1 - pgen) * prob).log()
         else:
             l_output_new = l_output
@@ -265,19 +236,14 @@ def Plain_seq_train(rt, re, rm, summary, encoder, decoder,
             decoder_input, decoder_hidden, encoder_outputs)
 
         if decoder.copy:
-            prob = Variable(torch.zeros([decoder_output.shape[0], decoder_output.shape[1]]), requires_grad=False)
+            prob = Variable(torch.zeros(decoder_output.shape), requires_grad=False)
             prob = prob.cuda() if use_cuda else prob
-            
-            for b in range(rm.shape[0]):
-                words = set(rm.data.cpu().numpy()[b,:])
-                for i in words:
-                    w = torch.LongTensor([i])
-                    w = w.cuda() if use_cuda else w
-                    idx = (rm.data[b, :] == w)
-                    word_attn = decoder_attention.permute(0, 2, 1)[b,:,0]
-                    prob[b,i] += torch.sum(word_attn[idx])
-            prob = torch.mul(prob, (1 - pgen))
-            decoder_output_new = (decoder_output.exp() + prob).log()
+
+            decoder_attention = decoder_attention.squeeze(1)
+            # reshape 
+            prob = prob.scatter_add(1, rm, decoder_attention)
+
+            decoder_output_new = (decoder_output.exp() + (1-pgen)*prob).log()
         else:
             decoder_output_new = decoder_output
         loss += criterion(decoder_output_new, summary[:, di])
@@ -382,7 +348,7 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
 
     # Choose decoder style and training function
     if decoder_style == 'HierarchicalRNN':
-        decoder = HierarchicalDecoder(embedding_size, langs['summary'].n_words, copy=False)
+        decoder = HierarchicalDecoder(embedding_size, langs['summary'].n_words)
         train_func = Hierarchical_seq_train
     else:
         decoder = AttnDecoderRNN(embedding_size, langs['summary'].n_words)
