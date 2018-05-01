@@ -2,15 +2,26 @@
 import torch
 from torch.autograd import Variable
 
+from preprocessing import data_iter
 from dataprepare import loaddata, data2index
-from train import evaluate
-from model import AttnDecoderRNN, EncoderRNN, EncoderLIN, docEmbedding, EncoderBiLSTM
-from settings import file_loc, ENCODER_STYLE
+from train import get_batch
+
+
+from model import docEmbedding, Seq2Seq
+from model import EncoderLIN, EncoderBiLSTM, EncoderBiLSTMMaxPool
+from model import HierarchicalEncoderRNN, HierarchicalBiLSTM, HierarchicalLIN
+from model import AttnDecoderRNN, HierarchicalDecoder
+
+
+from settings import file_loc, use_cuda
+from settings import EMBEDDING_SIZE, ENCODER_STYLE, DECODER_STYLE
+from settings import USE_MODEL
+
 from util import load_model
 
 
-def hierarchical_predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
-                 encoder_style, beam_size):
+def hierarchical_predictwords(rt, re, rm, encoder, decoder, embedding_size,
+                              encoder_style, beam_size):
     """The function will predict the sentecnes given boxscore.
 
     Encode the given box score, decode it to sentences, and then
@@ -242,17 +253,60 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
     return decoded_words, decoder_attentions[:len(decoded_words)]
 
 
-def evaluate(encoder, decoder, valid_set, lang,
-             embedding_size, encoder_style=ENCODER_STYLE, iter_time=10,
-             beam_size=1, verbose=True):
+def evaluate(valid_set, langs, embedding_size,
+             encoder_style, decoder_style, 
+             use_model, beam_size=1, verbose=False):
     """The evaluate procedure."""
-    # Get evaluate data
-    valid_iter = data_iter(valid_set, batch_size=1, shuffle=True)
+
+    # Initialize the model
+    emb = docEmbedding(langs['rt'].n_words, langs['re'].n_words,
+                       langs['rm'].n_words, embedding_size)
+    emb.init_weights()
+
+    # Choose encoder style
+    if encoder_style == 'LIN':
+        encoder = EncoderLIN(embedding_size, emb)
+    elif encoder_style == 'BiLSTM':
+        encoder = EncoderBiLSTM(embedding_size, emb)
+    elif encoder_style == 'BiLSTMMax':
+        encoder = EncoderBiLSTMMaxPool(embedding_size, emb)
+    elif encoder_style == 'HierarchicalBiLSTM':
+        encoder_args = {"hidden_size": embedding_size, "local_embed": emb}
+        encoder = HierarchicalBiLSTM(**encoder_args)
+    elif encoder_style == 'HierarchicalLIN':
+        encoder_args = {"hidden_size": embedding_size, "local_embed": emb}
+        encoder = HierarchicalLIN(**encoder_args)
+    else:
+        # initialize hierarchical encoder rnn, (both global and local)
+        encoder_args = {"hidden_size": embedding_size, "local_embed": emb}
+        encoder = HierarchicalEncoderRNN(**encoder_args)
+
+    # Choose decoder style and training function
+    if decoder_style == 'HierarchicalRNN':
+        decoder = HierarchicalDecoder(embedding_size, langs['summary'].n_words)
+        decode_func = hierarchical_predictwords
+    else:
+        decoder = AttnDecoderRNN(embedding_size, langs['summary'].n_words)
+        decode_func = predictwords
+
     if use_cuda:
         encoder.cuda()
         decoder.cuda()
 
-    for iteration in range(iter_time):
+    # Load the model
+    encoder = load_model(encoder, use_model[0])
+    decoder = load_model(decoder, use_model[1])
+
+    # No need to calculate the loss
+    criterion = None
+
+    # Build the model
+    model = Seq2Seq(encoder, decoder, None, decode_func, criterion, embedding_size, langs)
+
+    # Get evaluate data
+    valid_iter = data_iter(valid_set, batch_size=1, shuffle=False)
+
+    for dt in valid_iter:
 
         # Get data
         data, idx_data = get_batch(next(valid_iter))
@@ -263,17 +317,11 @@ def evaluate(encoder, decoder, valid_set, lang,
         re = Variable(torch.LongTensor(re))
         rm = Variable(torch.LongTensor(rm))
 
-        # For Decoding
-        summary = Variable(torch.LongTensor(summary))
-
         if use_cuda:
             rt, re, rm, summary = rt.cuda(), re.cuda(), rm.cuda(), summary.cuda()
 
         # Get decoding words and attention matrix
-        decoded_words, decoder_attentions = predictwords(rt, re, rm, summary,
-                                                         encoder, decoder, lang,
-                                                         embedding_size, encoder_style,
-                                                         beam_size)
+        decoded_words, decoder_attentions = model.seq_decode(rt, re, rm, beam_size)
 
         res = ' '.join(decoded_words[:-1])
         if verbose:
@@ -292,42 +340,24 @@ def evaluate(encoder, decoder, valid_set, lang,
 
 
 def main():
+    print("Start Evaluating")
+
+    # Default parameter
+    embedding_size = EMBEDDING_SIZE
+    encoder_style = ENCODER_STYLE
+    decoder_style = DECODER_STYLE
+    use_model = USE_MODEL
+
     # Prepare data for loading the model
     train_data, train_lang = loaddata(file_loc, 'train')
-
     embedding_size = 600
-    langs = train_lang
-    emb = docEmbedding(langs['rt'].n_words, langs['re'].n_words,
-                       langs['rm'].n_words, embedding_size)
-    emb.init_weights()
-
-    encoder_src = './models/long4_encoder_2120'
-    decoder_src = './models/long4_decoder_2120'
-
-    encoder_style = None
-
-    if 'RNN' == ENCODER_STYLE:
-        encoder = EncoderRNN(embedding_size, emb)
-        encoder_style = 'RNN'
-    elif 'LSTM' == ENCODER_STYLE:
-        encoder = EncoderBiLSTM(embedding_size, emb)
-        encoder_style = 'BiLSTM'
-    else:
-        encoder = EncoderLIN(embedding_size, emb)
-        encoder_style = 'LIN'
-
-    decoder = AttnDecoderRNN(embedding_size, langs['summary'].n_words)
-
-    encoder = load_model(encoder, encoder_src)
-    decoder = load_model(decoder, decoder_src)
 
     # Load data for evaluation
     valid_data, _ = loaddata(file_loc, 'valid')
     valid_data = data2index(valid_data, train_lang)
-    text_generator = evaluate(encoder, decoder, valid_data,
-                              train_lang['summary'], embedding_size,
-                              encoder_style=encoder_style, iter_time=2,
-                              beam_size=1, verbose=False)
+    text_generator = evaluate(valid_data, train_lang, embedding_size,
+                              encoder_style, decoder_style,
+                              use_model, beam_size=1, verbose=False)
 
     # Generate Text
     for idx, text in enumerate(text_generator):

@@ -27,7 +27,7 @@ class Seq2Seq(object):
     def train(self):
         self.encoder.train()
         self.decoder.train()
-    
+
     def eval(self):
         self.encoder.eval()
         self.decoder.eval()
@@ -228,6 +228,7 @@ class EncoderBiLSTM(nn.Module):
             return (forward.cuda(), backward.cuda())
         else:
             return (forward, backward)
+
 
 class EncoderBiLSTMMaxPool(nn.Module):
     """Vanilla encoder using pure LSTM."""
