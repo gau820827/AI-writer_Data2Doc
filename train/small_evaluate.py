@@ -1,4 +1,6 @@
 """Evaluate the model."""
+import time
+
 import torch
 from torch.autograd import Variable
 
@@ -11,7 +13,7 @@ from model import docEmbedding, Seq2Seq
 from model import EncoderLIN, EncoderBiLSTM, EncoderBiLSTMMaxPool
 from model import HierarchicalEncoderRNN, HierarchicalBiLSTM, HierarchicalLIN
 from model import AttnDecoderRNN, HierarchicalDecoder
-from util import PriorityQueue
+from util import PriorityQueue, gettime
 
 
 from settings import file_loc, use_cuda
@@ -214,13 +216,13 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
                 decoder_input, decoder_hidden, encoder_outputs)
 
             if decoder.copy:
-                prob = Variable(torch.zeros(decoder_output.shape), requires_grad=False)
-                prob = prob.cuda() if use_cuda else prob
+                prob_copy = Variable(torch.zeros(decoder_output.shape), requires_grad=False)
+                prob_copy = prob_copy.cuda() if use_cuda else prob_copy
 
                 decoder_attention = decoder_attention.squeeze(1)
-                prob = prob.scatter_add(1, rm, decoder_attention)
+                prob_copy = prob_copy.scatter_add(1, rm, decoder_attention)
 
-                decoder_output_new = (decoder_output.exp() + (1-pgen)*prob).log()
+                decoder_output_new = (decoder_output.exp() + (1-pgen)*prob_copy).log()
                 decoder_attention = decoder_attention.unsqueeze(1)                
             else:
                 decoder_output_new = decoder_output
@@ -230,13 +232,13 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
 
             # decode the word
             # print(decoder_output)
-            topv, topi = decoder_output.data.topk(beam_size)
-
+            topv, topi = decoder_output_new.data.topk(beam_size)
+            
+            
             for i in range(beam_size):
-                p = topv[0][i]
-                idp = topi[0][i]
+                p = topv[0,i]
+                idp = topi[0,i]
                 new_beam = [prob + p, route + [idp], decoder_hidden, atten]
-                # print(new_beam[0])
                 q.push(new_beam, new_beam[0])
 
         # Keep the highest K probability
@@ -270,7 +272,7 @@ def evaluate(valid_set, langs, embedding_size,
 
     # Build the model
     model = Seq2Seq(encoder, decoder, None, decode_func, criterion, embedding_size, langs)
-
+    model.eval()
     # Get evaluate data
     valid_iter = data_iter(valid_set, batch_size=1, shuffle=False)
 
@@ -341,11 +343,13 @@ def main():
     valid_data = data2index(valid_data, train_lang)
     text_generator = evaluate(valid_data, train_lang, embedding_size,
                               encoder_style, decoder_style,
-                              use_model, beam_size=1, verbose=False)
+                              use_model, beam_size=10, verbose=False)
 
     # Generate Text
+    start = time.time()
     for idx, text in enumerate(text_generator):
-        print('Generate Summary {}:\n{}'.format(idx + 1, text))
+        print('Time: {} Generate Summary {}:\n{}'.format(gettime(start), idx + 1, text))
 
 if __name__ == '__main__':
-    main()
+    with torch.no_grad():
+        main()
