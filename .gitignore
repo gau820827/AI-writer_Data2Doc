@@ -107,3 +107,6 @@ ENV/
 
 # Vagrant
 .vagrant/
+
+# Pngs
+*.png

@@ -4,6 +4,9 @@ import time
 import torch
 from torch.autograd import Variable
 
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+
 from preprocessing import data_iter
 from dataprepare import loaddata, data2index
 from train import get_batch, model_initialization, addpaddings, find_max_block_numbers, initGlobalEncoderInput
@@ -18,7 +21,7 @@ from util import PriorityQueue, gettime
 
 from settings import file_loc, use_cuda
 from settings import EMBEDDING_SIZE, ENCODER_STYLE, DECODER_STYLE
-from settings import USE_MODEL
+from settings import USE_MODEL, Model_name
 
 from util import load_model
 
@@ -125,14 +128,30 @@ def hierarchical_predictwords(rt, re, rm, encoder, decoder, embedding_size, lang
             
             l_attn_weights = l_attn_weights.squeeze(1)
             bg_attn_weights = g_attn_weights.view(batch_length * len(blocks_len), -1)
+            # print(l_attn_weights)
+            # print(g_attn_weights)
+            # print(bg_attn_weights)
             combine_attn_weights = l_attn_weights * bg_attn_weights
             combine_attn_weights = combine_attn_weights.view(batch_length, -1)
-            
+            # print(torch.sum(combine_attn_weights))
+
+            if local_decoder.copy:
+                prob_copy = Variable(torch.zeros(l_output.shape), requires_grad=False)
+                prob_copy = prob_copy.cuda() if use_cuda else prob_copy
+
+                # Now we had rm as (batch, input) and combine_attn_weights as (batch, input)
+                # Add up to the pgen probability matrix
+                prob_copy = prob_copy.scatter_add(1, rm, combine_attn_weights)
+
+                l_output_new = (l_output.exp() + (1 - pgen) * prob_copy).log()
+            else:
+                l_output_new = l_output
+
             # Get the attention vector at each prediction
             atten[destination, :combine_attn_weights.shape[1]] = combine_attn_weights.data[0, :]
 
             # decode the word
-            topv, topi = l_output.data.topk(beam_size)
+            topv, topi = l_output_new.data.topk(beam_size)
 
             for i in range(beam_size):
                 p = topv[0][i]
@@ -149,7 +168,7 @@ def hierarchical_predictwords(rt, re, rm, encoder, decoder, embedding_size, lang
 
     # Get decoded_words and decoder_attetntions
     decoded_words = [langs['summary'].index2word[w.item()] for w in beams[0][1][1:]]
-    decoder_attentions = beams[0][3]
+    decoder_attentions = beams[0][6]
     return decoded_words, decoder_attentions[:len(decoded_words)]
 
 
@@ -301,18 +320,42 @@ def evaluate(valid_set, langs, embedding_size,
         decoded_words, decoder_attentions = model.seq_decode(rt, re, rm, beam_size)
 
         res = ' '.join([ w for w in decoded_words[:-1] if w!='<PAD>'])
+        # res = ' '.join(decoded_words[:-1])
         if verbose:
+            print("Generate Summary {}:".format(iteration))
             print(res)
-        yield res
 
         # # FOR WRITING REPORTS ONLY
         # # Compare to the origin data
-        print("Reference Summary:")
-        triplets, gold_summary = data[0]
+            print("Reference Summary:")
+            triplets, gold_summary = data[0]
 
-        for word in gold_summary:
-            print(word, end=' ')
-        print(' ')
+            for word in gold_summary:
+                print(word, end=' ')
+            print(' ')
+            print(torch.sum(rt==EOB_TOKEN))
+            block_num = torch.sum(rt==EOB_TOKEN).item()
+            ctr = 0
+            fig = plt.figure(figsize=(40,60))
+            for i in range(block_num):
+                ctr_end = ctr
+                while rt[0,ctr_end] != EOB_TOKEN and ctr_end+1 < rt.shape[1]:
+                    ctr_end +=1
+                ax = fig.add_subplot(block_num, 1 ,i+1)
+                mat = ax.matshow(decoder_attentions.t()[ ctr: ctr_end+1 ,:], interpolation='nearest')
+                ctr = ctr_end+1
+            fig.subplots_adjust(right=0.8)
+            cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
+            fig.colorbar(mat, cax=cbar_ax)
+
+            #ax.set_xticklabels(decoded_words)
+            #ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
+            # ax.set_yticklabels(['']+alpha)
+
+            plt.savefig(Model_name+'_'+str(iteration)+'.png')
+        yield res
+
+        
 
         # showAttention(triplets, decoded_words, decoder_attentions)
     return
@@ -336,12 +379,12 @@ def main():
     valid_data = data2index(valid_data, train_lang)
     text_generator = evaluate(valid_data, train_lang, embedding_size,
                               encoder_style, decoder_style,
-                              use_model, beam_size=50, verbose=False)
+                              use_model, beam_size=15, verbose=True)
 
     # Generate Text
     start = time.time()
     for idx, text in enumerate(text_generator):
-        print('Time: {} Generate Summary {}:\n{}'.format(gettime(start), idx + 1, text))
+        print('Time: {}:\n'.format(gettime(start)))
 
 if __name__ == '__main__':
     with torch.no_grad():

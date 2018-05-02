@@ -20,13 +20,14 @@ class Lang:
 
     """
 
-    def __init__(self, name):
+    def __init__(self, name, threshold=1):
         """Init Lang with a name."""
         # Ken added <EOB> on 04/04/2018
         self.name = name
         self.word2index = {"<SOS>": 0, "<EOS>": 1, "<PAD>": 2, "<UNK>": 3, "<EOB>": 4, "<BLK>": 5}
         self.word2count = {"<EOS>": 0, "<PAD>": 0, "<EOB>": 0, "<BLK>": 0}
         self.index2word = {0: "<SOS>", 1: "<EOS>", 2: "<PAD>", 3: "<UNK>", 4: "<EOB>", 5: "<BLK>"}
+        self.threshold = threshold
         self.n_words = 5  # Count SOS and EOS
 
     def addword(self, word):
@@ -45,7 +46,7 @@ class Lang:
             self.n_words += 1
         else:
             self.word2count[word] += 1
-
+        
 
 def readLang(data_set):
     """The function to wrap up a data_set.
@@ -157,7 +158,7 @@ def data2index(data_set, langs, max_sentences=MAX_SENTENCES):
         # data_set[i].append([idx_triplets] + [idx_summary])
         data_set[i].idx_data = [idx_triplets] + [idx_summary]
         data_set[i].sent_leng = sentence_cnt
-
+    
     return data_set
 
 

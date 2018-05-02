@@ -226,6 +226,20 @@ def Plain_seq_train(rt, re, rm, summary, encoder, decoder,
     decoder_hidden[0, :, :] = context_vec  # might be zero
     decoder_input = Variable(torch.LongTensor(batch_length).zero_(), requires_grad=False)
     decoder_input = decoder_input.cuda() if use_cuda else decoder_input
+    
+    # Calculate OOVs
+    # 0 is <KWN>
+    # oov2index = {'<KWN>':0}
+    # oov2_ctr = 1
+    # print(rm[rm==3])
+    # for b in range(batch_length):
+    #     print(data[b][1])
+    #     for i in range(len(data[b][1])):
+    #         if rm.data[b,i] == 3 and data[b][1][i] not in oov2index:
+    #             oov2index[data[b][1][i]] = oov2_ctr
+    #             oov2_ctr += 1
+
+    # print(oov2index)
 
     # Feed the target as the next input
     for di in range(target_length):
@@ -240,8 +254,27 @@ def Plain_seq_train(rt, re, rm, summary, encoder, decoder,
 
             decoder_attention = decoder_attention.squeeze(1)
             prob = prob.scatter_add(1, rm, decoder_attention)
+            # reset <UNK> prob
+            # prob[:,3] = 0
+            # # calculate oov prob.
+            # oovrm = [[ (oov2index[w] if w in oov2index else 0) for w in data[i][1]] for i in range(batch_length)]
+            # oovrm = addpaddings(oovrm ,toZero=True)
+            # oovrm = Variable(torch.LongTensor(oovrm), requires_grad=False)
+            # oovrm = oovrm.cuda() if use_cuda else oovrm
+            # #print(rm!=3)
+            # #print(oovrm==0)
+            # #print(torch.sum((rm!=3) - (oovrm==0), 1))
+            # prob_oov = Variable(torch.zeros([batch_length, oov2_ctr]), requires_grad=False)
+            # prob_oov = prob_oov.cuda() if use_cuda else prob_oov
+
+            # prob_oov = prob_oov.scatter_add(1, oovrm, decoder_attention)
+            # prob_oov[:,0] = 0
+
+            #print(torch.sum(prob, 1))
+            #print(torch.sum(prob_oov, 1))
 
             decoder_output_new = (decoder_output.exp() + (1-pgen)*prob).log()
+            print(torch.sum(decoder_output_new.exp(), 1) + torch.sum((1-pgen)*prob_oov, 1))
         else:
             decoder_output_new = decoder_output
         loss += criterion(decoder_output_new, summary[:, di])
@@ -300,7 +333,7 @@ def add_sentence_paddings(summarizes):
     return summarizes
 
 
-def addpaddings(tokens):
+def addpaddings(tokens, toZero=False):
     """A helper function to add paddings to tokens.
 
     Args:
@@ -311,7 +344,10 @@ def addpaddings(tokens):
     """
     max_length = len(max(tokens, key=len))
     for i in range(len(tokens)):
-        tokens[i] += [PAD_TOKEN for i in range(max_length - len(tokens[i]))]
+        if toZero:
+            tokens[i] += [0 for i in range(max_length - len(tokens[i]))]
+        else:
+            tokens[i] += [PAD_TOKEN for i in range(max_length - len(tokens[i]))]
     return tokens
 
 def model_initialization(encoder_style, decoder_style, langs, embedding_size, learning_rate, use_model):
@@ -402,6 +438,7 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         for dt in train_iter:
             iteration += 1
             data, idx_data = get_batch(dt)
+            print(idx_data)
             rt, re, rm, summary = idx_data
 
             # Debugging: check the input triplets
@@ -412,6 +449,7 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
             re = addpaddings(re)
             rm = addpaddings(rm)
 
+
             # For summary paddings, if the model is herarchical then pad between sentences
             if decoder_style == 'HierarchicalRNN':
                 summary = add_sentence_paddings(summary)
@@ -421,6 +459,11 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
             rt = Variable(torch.LongTensor(rt), requires_grad=False)
             re = Variable(torch.LongTensor(re), requires_grad=False)
             rm = Variable(torch.LongTensor(rm), requires_grad=False)
+            
+            # DEBUG:
+            if torch.sum(rm==3).item() == 0:
+                print('skip')
+                continue
 
             # For Decoding
             summary = Variable(torch.LongTensor(summary), requires_grad=False)
