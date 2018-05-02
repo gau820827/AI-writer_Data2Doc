@@ -1,5 +1,6 @@
 """This is core training part, containing different models."""
 import time
+import argparse
 
 import torch
 import torch.nn as nn
@@ -10,7 +11,7 @@ from preprocessing import data_iter
 from dataprepare import loaddata, data2index
 from model import docEmbedding, Seq2Seq
 from model import EncoderLIN, EncoderBiLSTM, EncoderBiLSTMMaxPool
-from model import HierarchicalEncoderRNN, HierarchicalBiLSTM
+from model import HierarchicalRNN, HierarchicalBiLSTM, HierarchicalLIN
 from model import AttnDecoderRNN, HierarchicalDecoder
 from util import gettime, load_model, show_triplets
 from util import PriorityQueue
@@ -18,7 +19,8 @@ from util import PriorityQueue
 from settings import file_loc, use_cuda, USE_MODEL
 from settings import EMBEDDING_SIZE, LR, ITER_TIME, BATCH_SIZE, GRAD_CLIP
 from settings import MAX_SENTENCES, ENCODER_STYLE, DECODER_STYLE, TOCOPY, MAX_TRAIN_NUM
-from settings import GET_LOSS, SAVE_MODEL, OUTPUT_FILE, COPY_PLAYER
+from settings import GET_LOSS, SAVE_MODEL, OUTPUT_FILE, COPY_PLAYER, MAX_LENGTH
+from settings import default_parameters
 
 import numpy as np
 
@@ -217,11 +219,9 @@ def Plain_seq_train(rt, re, rm, summary, encoder, decoder,
 
     # encoder_outputs: (seq_len, batch_size, hidden_dim)
 
-
     context_vec = encoder_outputs[-1, :, :]
     # context_vec: (batch_size, hidden_dim)
-    encoder_outputs = encoder_outputs.permute(1,0,2)
-    
+    encoder_outputs = encoder_outputs.permute(1, 0, 2)
 
     decoder_hidden = decoder.initHidden(batch_length)
     decoder_hidden[0, :, :] = context_vec  # might be zero
@@ -240,7 +240,7 @@ def Plain_seq_train(rt, re, rm, summary, encoder, decoder,
             prob = prob.cuda() if use_cuda else prob
 
             decoder_attention = decoder_attention.squeeze(1)
-            # reshape 
+            # reshape
             prob = prob.scatter_add(1, rm, decoder_attention)
 
             decoder_output_new = (decoder_output.exp() + (1-pgen)*prob).log()
@@ -317,11 +317,21 @@ def addpaddings(tokens):
     return tokens
 
 
-def train(train_set, langs, embedding_size=600, learning_rate=0.01,
-          iter_time=10, batch_size=32, get_loss=GET_LOSS, save_model=SAVE_MODEL,
-          encoder_style=ENCODER_STYLE, decoder_style=DECODER_STYLE,
-          use_model=USE_MODEL):
+def train(train_set, langs, embedding_size=EMBEDDING_SIZE, learning_rate=LR,
+          batch_size=BATCH_SIZE, get_loss=GET_LOSS, grad_clip=GRAD_CLIP,
+          use_model=USE_MODEL, encoder_style=ENCODER_STYLE,
+          decoder_style=DECODER_STYLE, max_length=MAX_LENGTH,
+          max_sentece=MAX_SENTENCES, save_model=SAVE_MODEL,
+          output_file=OUTPUT_FILE, to_copy=TOCOPY,
+          copy_player=COPY_PLAYER, iter_time=10):
     """The training procedure."""
+    # Test arg parser (For Debugging)
+    # print("embedding_size={}, learning_rate={}, batch_size={}, get_loss={}, grad_clip={},\
+    #       use_model={}, encoder_style={}, decoder_style={}, max_length={},\
+    #       max_sentece={}, save_model={}, output_file={}, to_copy={}, copy_player={}".format(
+    #         embedding_size, learning_rate, batch_size, get_loss, grad_clip, use_model,
+    #         encoder_style, decoder_style, max_length, max_sentece, save_model, output_file,
+    #        to_copy, copy_player))
     # Set the timer
     start = time.time()
 
@@ -337,7 +347,7 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
     elif encoder_style == 'BiLSTM':
         encoder = EncoderBiLSTM(embedding_size, emb)
     elif encoder_style == 'BiLSTMMax':
-        encoder = EncoderBiLSTMMaxPooling(embedding_size, emb)
+        encoder = EncoderBiLSTMMaxPool(embedding_size, emb)
     elif encoder_style == 'HierarchicalBiLSTM':
         encoder_args = {"hidden_size": embedding_size, "local_embed": emb}
         encoder = HierarchicalBiLSTM(**encoder_args)
@@ -347,7 +357,7 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
     else:
         # initialize hierarchical encoder rnn, (both global and local)
         encoder_args = {"hidden_size": embedding_size, "local_embed": emb}
-        encoder = HierarchicalEncoderRNN(**encoder_args)
+        encoder = HierarchicalRNN(**encoder_args)
 
     # Choose decoder style and training function
     if decoder_style == 'HierarchicalRNN':
@@ -434,7 +444,7 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
 
             # Get the average loss on the sentences
             target_length = summary.size()[1]
-            if float(torch.__version__[:3])>0.3:
+            if float(torch.__version__[:3]) > 0.3:
                 total_loss += loss.item()
             else:
                 total_loss += loss.data[0]
@@ -447,17 +457,18 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
 
         if epo % save_model == 0:
             torch.save(encoder.state_dict(),
-                       "models/{}_encoder_{}".format(OUTPUT_FILE, iteration))
+                       "models/{}_encoder_{}".format(output_file, iteration))
             torch.save(decoder.state_dict(),
-                       "models/{}_decoder_{}".format(OUTPUT_FILE, iteration))
+                       "models/{}_decoder_{}".format(output_file, iteration))
             torch.save(loss_optimizer.state_dict(),
-                       "models/{}_optim_{}".format(OUTPUT_FILE, iteration))
+                       "models/{}_optim_{}".format(output_file, iteration))
             print("Save the model at iter {}".format(iteration))
 
     return model.encoder, model.decoder
 
-def hierarchical_predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
-                 encoder_style, beam_size):
+
+def hierarchical_predictwords(rt, re, rm, summary, encoder, decoder, lang,
+                              embedding_size, encoder_style, beam_size):
     """The function will predict the sentecnes given boxscore.
 
     Encode the given box score, decode it to sentences, and then
@@ -481,7 +492,6 @@ def hierarchical_predictwords(rt, re, rm, summary, encoder, decoder, lang, embed
     local_encoder_outputs = local_encoder_outputs.cuda() if use_cuda else local_encoder_outputs
     global_encoder_outputs = Variable(torch.zeros(batch_length, MAX_BLOCK, embedding_size))
     global_encoder_outputs = global_encoder_outputs.cuda() if use_cuda else global_encoder_outputs
-
 
     # Encoding
     if encoder_style == 'BiLSTM':
@@ -655,7 +665,7 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
                 prob = Variable(torch.zeros(decoder_output.shape), requires_grad=False)
                 prob = prob.cuda() if use_cuda else prob
                 for i in range(decoder_attention.shape[2]):
-                    prob[:,rm[:,i]] += (1-pgen)*decoder_attention[:,0,i]
+                    prob[:, rm[:, i]] += (1 - pgen) * decoder_attention[:, 0, i]
 
                 decoder_output_new = decoder_output + prob
                 decoder_output_new = decoder_output_new.log()
@@ -668,7 +678,7 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
             # decode the word
             topv, topi = decoder_output.data.topk(beam_size)
 
-            #TODO 
+            #TODO
 
             for i in range(beam_size):
                 p = topv[0][i]
@@ -738,40 +748,88 @@ def evaluate(encoder, decoder, valid_set, lang,
         # showAttention(triplets, decoded_words, decoder_attentions)
 
 
-def showconfig():
-    """Display the configuration."""
-    print("EMBEDDING_SIZE = {}\nLR = {}\nITER_TIME = {}\nBATCH_SIZE = {}".format(
-        EMBEDDING_SIZE, LR, ITER_TIME, BATCH_SIZE))
-    print("MAX_SENTENCES = {}\nGRAD_CLIP = {}".format(MAX_SENTENCES, GRAD_CLIP))
-    print("ENCODER_STYLE = {}\nDECODER_STYLE = {}".format(ENCODER_STYLE, DECODER_STYLE))
-    print("COPY = {}\nCOPY_PLAYER = {}".format(TOCOPY, COPY_PLAYER))
-    print("USE_MODEL = {}\nOUTPUT_FILE = {}".format(USE_MODEL, OUTPUT_FILE))
+def setupconfig(args):
+    """Set up and display the configuration."""
+    print("Command Line Options:")
+    # Read in command line parameters.
+
+    parameters = {}
+    for arg in vars(args):
+        parameters[arg] = getattr(args, arg)
+        print("{} = {}".format(arg, parameters[arg]))
+    print("---------------")
+    # If not present in command line, read in default parameters.
+    print("Using Defaults:")
+
+    for arg in default_parameters:
+        if parameters[arg] is None:
+            parameters[arg] = default_parameters[arg]
+            print("{} = {}".format(arg, parameters[arg]))
+    print("---------------")
+    print("Parameter Settings:")
+    hierarchical_choices = ['HierarchicalRNN', 'HierarchicalBiLSTM',
+                            'HierarchicalLIN']
+
+    if parameters['encoder_style'] in hierarchical_choices and parameters['decoder_style'] != 'HierarchicalRNN':
+        print("You must give me two hierarchical NNs!!!!!!!!!")
+        quit()
+
+    for arg in parameters:
+        print("{} = {}".format(arg, parameters[arg]))
+    print("---------------")
+
+    return parameters
 
 
-def main():
+def main(args):
+    """Main train driver."""
     print("Start Training")
-    # Display Configuration
-    showconfig()
-    # Default parameter
-    embedding_size = EMBEDDING_SIZE
-    learning_rate = LR
-    train_iter_time = ITER_TIME
-    batch_size = BATCH_SIZE
+
+    parameters = setupconfig(args)
 
     # For Training
     train_data, train_lang = loaddata(file_loc, 'train')
     if MAX_TRAIN_NUM is not None:
         train_data = train_data[:MAX_TRAIN_NUM]
-    train_data = data2index(train_data, train_lang)
-    encoder, decoder = train(train_data, train_lang,
-                             embedding_size=embedding_size, learning_rate=learning_rate,
-                             iter_time=train_iter_time, batch_size=batch_size, use_model=USE_MODEL)
 
+    train_data = data2index(train_data, train_lang)
+
+    encoder, decoder = train(train_data, train_lang, **parameters)
     # For evaluation
     valid_data, _ = loaddata(file_loc, 'valid')
     valid_data = data2index(valid_data, train_lang)
-    evaluate(encoder, decoder, valid_data, train_lang['summary'], embedding_size)
+    evaluate(encoder, decoder, valid_data, train_lang['summary'],
+             parameters['embedding_size'])
+
+
+def parse_argument():
+    """Hyperparmeter tuning."""
+    encoder_choices = ['EncoderLIN', 'EncoderBiLSTM',
+                       'EncoderBiLSTMMaxPool', 'HierarchicalRNN',
+                       'HierarchicalBiLSTM', 'HierarchicalLIN']
+
+    decoder_choices = ['AttnDecoderRNN', 'HierarchicalRNN']
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("-embeddingsize", "--embedding_size", type=int)
+    ap.add_argument("-learningrate", "--learning_rate", type=float)
+    ap.add_argument("-batchsize", "--batch_size", type=int)
+    ap.add_argument("-getloss", "--get_loss", type=int)
+    ap.add_argument("-pretrain", "--use_model")
+    ap.add_argument("-encoder", "--encoder_style", choices=encoder_choices)
+    ap.add_argument("-decoder", "--decoder_style", choices=decoder_choices)
+    ap.add_argument("-epochsave", "--save_model", type=int)
+    ap.add_argument("-outputfile", "--output_file")
+    ap.add_argument("-tocopy", "--to_copy", type=bool)
+    ap.add_argument("-copyplayer", "--copy_player", type=bool)
+    ap.add_argument("-gradclip", "--grad_clip", type=int)
+    ap.add_argument("-maxlength", "--max_length", type=int)
+    # max_sentence is optional
+    ap.add_argument("-maxsentece", "--max_sentece", type=int)
+
+    return ap.parse_args()
 
 
 if __name__ == '__main__':
-    main()
+    args = parse_argument()
+    main(args)
