@@ -4,6 +4,8 @@ import time
 import torch
 from torch.autograd import Variable
 
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
@@ -333,17 +335,30 @@ def evaluate(valid_set, langs, embedding_size,
             for word in gold_summary:
                 print(word, end=' ')
             print(' ')
-            print(torch.sum(rt==EOB_TOKEN))
-            block_num = torch.sum(rt==EOB_TOKEN).item()
+            
+            block_num = 0
             ctr = 0
-            fig = plt.figure(figsize=(40,60))
-            for i in range(block_num):
+            # count block
+            while ctr < decoder_attentions.shape[1]:
                 ctr_end = ctr
-                while rt[0,ctr_end] != EOB_TOKEN and ctr_end+1 < rt.shape[1]:
+                while ctr_end < rt.shape[1] and ctr_end < decoder_attentions.shape[1] and rt[0, ctr_end] != EOB_TOKEN :
+                    ctr_end+=1
+                block_num += 1
+                if ctr_end >= rt.shape[1]:
+                    break
+                ctr = ctr_end+1
+            print(block_num)
+            fig = plt.figure(figsize=(40,60))
+            i = 0
+            ctr = 0
+            while ctr < decoder_attentions.shape[1]:
+                ctr_end = ctr
+                while ctr_end < rt.shape[1] and ctr_end < decoder_attentions.shape[1] and rt[0,ctr_end] != EOB_TOKEN :
                     ctr_end +=1
                 ax = fig.add_subplot(block_num, 1 ,i+1)
                 mat = ax.matshow(decoder_attentions.t()[ ctr: ctr_end+1 ,:], interpolation='nearest')
                 ctr = ctr_end+1
+                i+=1
             fig.subplots_adjust(right=0.8)
             cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
             fig.colorbar(mat, cax=cbar_ax)
@@ -379,7 +394,7 @@ def main():
     valid_data = data2index(valid_data, train_lang)
     text_generator = evaluate(valid_data, train_lang, embedding_size,
                               encoder_style, decoder_style,
-                              use_model, beam_size=15, verbose=True)
+                              use_model, beam_size=10, verbose=True)
 
     # Generate Text
     start = time.time()

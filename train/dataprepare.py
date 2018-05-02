@@ -20,7 +20,7 @@ class Lang:
 
     """
 
-    def __init__(self, name, threshold=1):
+    def __init__(self, name, threshold=100):
         """Init Lang with a name."""
         # Ken added <EOB> on 04/04/2018
         self.name = name
@@ -28,7 +28,7 @@ class Lang:
         self.word2count = {"<EOS>": 0, "<PAD>": 0, "<EOB>": 0, "<BLK>": 0}
         self.index2word = {0: "<SOS>", 1: "<EOS>", 2: "<PAD>", 3: "<UNK>", 4: "<EOB>", 5: "<BLK>"}
         self.threshold = threshold
-        self.n_words = 5  # Count SOS and EOS
+        self.n_words = len(self.word2index)  # Count SOS and EOS
 
     def addword(self, word):
         """Add a word to the dict.

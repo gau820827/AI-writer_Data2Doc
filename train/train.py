@@ -438,7 +438,6 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         for dt in train_iter:
             iteration += 1
             data, idx_data = get_batch(dt)
-            print(idx_data)
             rt, re, rm, summary = idx_data
 
             # Debugging: check the input triplets
