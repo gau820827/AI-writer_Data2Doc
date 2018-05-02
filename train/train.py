@@ -327,10 +327,10 @@ def train(train_set, langs, embedding_size=EMBEDDING_SIZE, learning_rate=LR,
     """The training procedure."""
     # Test arg parser (For Debugging)
     # print("embedding_size={}, learning_rate={}, batch_size={}, get_loss={}, grad_clip={},\
-    #       use_model={}, encoder_style={}, decoder_style={}, max_length={},\
-    #       max_sentece={}, save_model={}, output_file={}, to_copy={}, copy_player={}".format(
-    #         embedding_size, learning_rate, batch_size, get_loss, grad_clip, use_model,
-    #         encoder_style, decoder_style, max_length, max_sentece, save_model, output_file,
+    #        use_model={}, encoder_style={}, decoder_style={}, max_length={},\
+    #        max_sentece={}, save_model={}, output_file={}, to_copy={}, copy_player={}".format(
+    #        embedding_size, learning_rate, batch_size, get_loss, grad_clip, use_model,
+    #        encoder_style, decoder_style, max_length, max_sentece, save_model, output_file,
     #        to_copy, copy_player))
     # Set the timer
     start = time.time()
@@ -775,6 +775,11 @@ def setupconfig(args):
         quit()
 
     for arg in parameters:
+        if arg == 'to_copy' or arg == 'copy_player':
+            if parameters[arg] == 'True':
+                parameters[arg] = True
+            else:
+                parameters[arg] = False
         print("{} = {}".format(arg, parameters[arg]))
     print("---------------")
 
@@ -804,11 +809,11 @@ def main(args):
 
 def parse_argument():
     """Hyperparmeter tuning."""
-    encoder_choices = ['EncoderLIN', 'EncoderBiLSTM',
+    encoder_choices = ['EncoderLIN', 'EncoderBiLSTM', 'EncoderRNN',
                        'EncoderBiLSTMMaxPool', 'HierarchicalRNN',
                        'HierarchicalBiLSTM', 'HierarchicalLIN']
 
-    decoder_choices = ['AttnDecoderRNN', 'HierarchicalRNN']
+    decoder_choices = ['RNN', 'HierarchicalRNN']
 
     ap = argparse.ArgumentParser()
     ap.add_argument("-embeddingsize", "--embedding_size", type=int)
@@ -820,8 +825,8 @@ def parse_argument():
     ap.add_argument("-decoder", "--decoder_style", choices=decoder_choices)
     ap.add_argument("-epochsave", "--save_model", type=int)
     ap.add_argument("-outputfile", "--output_file")
-    ap.add_argument("-tocopy", "--to_copy", type=bool)
-    ap.add_argument("-copyplayer", "--copy_player", type=bool)
+    ap.add_argument("-tocopy", "--to_copy", choices=['True', 'False'])
+    ap.add_argument("-copyplayer", "--copy_player", choices=['True', 'False'])
     ap.add_argument("-gradclip", "--grad_clip", type=int)
     ap.add_argument("-maxlength", "--max_length", type=int)
     # max_sentence is optional
