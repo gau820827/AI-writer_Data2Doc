@@ -63,7 +63,7 @@ def find_max_block_numbers(batch_length, langs, rm):
     BLOCK_NUMBERS = np.ones(batch_length)
     for bi in range(batch_length):
         for ei in range(len(rm[bi, :])):
-            if langs['rm'].index2word[int(rm[bi, ei].data[0])] == '<EOB>':
+            if langs['rm'].index2word[int(rm[bi, ei].item())] == '<EOB>':
                 blocks_lens[bi].append(ei)
                 BLOCK_NUMBERS[bi] += 1
     return int(np.max(BLOCK_NUMBERS)), blocks_lens
