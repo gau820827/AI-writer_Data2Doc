@@ -6,7 +6,7 @@ from torch.autograd import Variable
 
 from preprocessing import data_iter
 from dataprepare import loaddata, data2index
-from train import get_batch, model_initialization, addpaddings
+from train import get_batch, model_initialization, addpaddings, find_max_block_numbers
 
 
 from model import docEmbedding, Seq2Seq
@@ -29,7 +29,7 @@ PAD_TOKEN = 2
 EOB_TOKEN = 4
 BLK_TOKEN = 5
 
-def hierarchical_predictwords(rt, re, rm, encoder, decoder, embedding_size,
+def hierarchical_predictwords(rt, re, rm, encoder, decoder, langs, embedding_size,
                               encoder_style, beam_size):
     """The function will predict the sentecnes given boxscore.
 
@@ -41,53 +41,34 @@ def hierarchical_predictwords(rt, re, rm, encoder, decoder, embedding_size,
     """
     batch_length = rt.size()[0]
     input_length = rt.size()[1]
-    target_length = 1000
+    target_length = summary.size()[1]
 
+    # MAX_BLOCK is the number of global hidden states
+    # block_lens is the start position of each block
     MAX_BLOCK, blocks_lens = find_max_block_numbers(batch_length, langs, rm)
-    BLOCK_JUMPS = 32
+
+    inputs = {"rt": rt, "re": re, "rm": rm}
 
     LocalEncoder = encoder.LocalEncoder
     GlobalEncoder = encoder.GlobalEncoder
 
-    # For now, these are redundant
-    local_encoder_outputs = Variable(torch.zeros(batch_length, input_length, embedding_size))
-    local_encoder_outputs = local_encoder_outputs.cuda() if use_cuda else local_encoder_outputs
-    global_encoder_outputs = Variable(torch.zeros(batch_length, MAX_BLOCK, embedding_size))
-    global_encoder_outputs = global_encoder_outputs.cuda() if use_cuda else global_encoder_outputs
-
-
     # Encoding
-    if encoder_style == 'BiLSTM':
-        init_hidden = encoder.initHidden(batch_length)
-        encoder_hidden, encoder_hiddens = encoder(rt, re, rm, init_hidden)
+    init_local_hidden = LocalEncoder.initHidden(batch_length)
+    init_global_hidden = GlobalEncoder.initHidden(batch_length)
+    local_encoder_outputs, local_hidden = LocalEncoder(inputs, init_local_hidden)
+    global_input = initGlobalEncoderInput(MAX_BLOCK, batch_length, input_length,
+                                          embedding_size, local_encoder_outputs)
+    global_encoder_outputs, global_hidden = GlobalEncoder({"local_hidden_states":
+                                                          global_input}, init_global_hidden)
+    """
+    Encoder Result Dimension: (batch, sequence length, hidden size)
+    """
+    local_encoder_outputs = local_encoder_outputs.permute(1, 0, 2)
+    global_encoder_outputs = global_encoder_outputs.permute(1, 0, 2)
 
-        # Store memory information
-        for ei in range(input_length):
-            encoder_outputs[:, ei] = encoder_hiddens[:, ei]
-
-    else:
-        # Local Encoder set up
-        init_local_hidden = LocalEncoder.initHidden(batch_length)
-        local_out, local_hidden = LocalEncoder({"rt": rt, "re": re, "rm": rm},
-                                               init_local_hidden)
-        # Global Encoder setup
-        global_input = Variable(torch.zeros(MAX_BLOCK, batch_length,
-                                            embedding_size))
-        global_input = global_input.cuda() if use_cuda else global_input
-        for ei in range(input_length):
-            if ei % BLOCK_JUMPS == 0:
-                # map ei to block number
-                global_input[int(ei / (BLOCK_JUMPS + 1)), :, :] = local_out[ei, :, :]
-
-        init_global_hidden = GlobalEncoder.initHidden(batch_length)
-        global_out, global_hidden = GlobalEncoder({"local_hidden_states":
-                                                  global_input}, init_global_hidden)
-        """
-        Store memory information
-        Unify dimension: (batch, sequence length, hidden size)
-        """
-        local_encoder_outputs = local_out.permute(1, 0, 2)
-        global_encoder_outputs = global_out.permute(1, 0, 2)
+    # Debugging: Test encoder outputs
+    # print(local_encoder_outputs)
+    # print(global_encoder_outputs)
 
     # The decoder init for developing
     global_decoder = decoder.global_decoder
@@ -104,11 +85,16 @@ def hierarchical_predictwords(rt, re, rm, encoder, decoder, embedding_size,
     l_input = Variable(torch.LongTensor(batch_length).zero_(), requires_grad=False)
     l_input = l_input.cuda() if use_cuda else l_input
 
+    # Reshape the local_encoder outputs to (batch * blocks, blk_size, hidden)
+    local_encoder_outputs = local_encoder_outputs.contiguous().view(batch_length * len(blocks_len),
+                                                                    input_length // len(blocks_len),
+                                                                    embedding_size)
+
     decoder_attentions = torch.zeros(target_length, input_length)
 
     # Initialize the Beam
     # Each Beam cell contains [prob, route, decoder_hidden, atten]
-    beams = [[0, [SOS_TOKEN], encoder_hidden, decoder_attentions]]
+    beams = [[0, [SOS_TOKEN], gnh, lnh, decoder_attentions]]
 
     # For each step
     for di in range(target_length):
@@ -117,7 +103,7 @@ def hierarchical_predictwords(rt, re, rm, encoder, decoder, embedding_size,
         q = PriorityQueue()
         for beam in beams:
 
-            prob, route, decoder_hidden, atten = beam
+            prob, route, gnh, lnh, atten = beam
             destination = len(route) - 1
 
             # Get the lastest predecition
@@ -127,12 +113,17 @@ def hierarchical_predictwords(rt, re, rm, encoder, decoder, embedding_size,
             if decoder_input == EOS_TOKEN:
                 q.push(beam, prob)
                 continue
+            if di == 0 or decoder_input == BLK_TOKEN:
+                g_output, gnh, g_context, g_attn_weights = global_decoder(
+                    g_input, gnh, global_encoder_outputs)
 
-            decoder_input = Variable(torch.LongTensor([decoder_input]))
-            decoder_input = decoder_input.cuda() if use_cuda else decoder_input
+            l_input = Variable(torch.LongTensor([decoder_input]))
+            l_input = l_input.cuda() if use_cuda else l_input
 
-            decoder_output, decoder_hidden, decoder_attention = decoder(
-                decoder_input, decoder_hidden, encoder_outputs)
+            l_output, lnh, l_context, l_attn_weights, pgen = local_decoder(
+                l_input, lnh, g_attn_weights, local_encoder_outputs, blocks_len)
+            
+            print(l_attn_weights)
 
             # Get the attention vector at each prediction
             atten[destination, :decoder_attention.shape[2]] = decoder_attention.data[0, 0, :]
@@ -159,8 +150,7 @@ def hierarchical_predictwords(rt, re, rm, encoder, decoder, embedding_size,
     return decoded_words, decoder_attentions[:len(decoded_words)]
 
 
-def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
-                 encoder_style, beam_size):
+def predictwords(rt, re, rm, encoder, decoder, embedding_size, langs, beam_size):
     """The function will predict the sentecnes given boxscore.
     Encode the given box score, decode it to sentences, and then
     return the prediction and attention matrix.
@@ -249,7 +239,7 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
             break
 
     # Get decoded_words and decoder_attetntions
-    decoded_words = [lang.index2word[w.item()] for w in beams[0][1][1:]]
+    decoded_words = [langs['summary'].index2word[w.item()] for w in beams[0][1][1:]]
     decoder_attentions = beams[0][3]
     return decoded_words, decoder_attentions[:len(decoded_words)]
 
@@ -305,10 +295,7 @@ def evaluate(valid_set, langs, embedding_size,
             rt, re, rm, summary = rt.cuda(), re.cuda(), rm.cuda(), summary.cuda()
 
         # Get decoding words and attention matrix
-        decoded_words, decoder_attentions = predictwords(rt, re, rm, summary,
-                                                         encoder, decoder, langs['summary'],
-                                                         embedding_size, encoder_style,
-                                                         beam_size)
+        decoded_words, decoder_attentions = model.seq_decode(rt, re, rm, beam_size)
 
         res = ' '.join(decoded_words[:-1])
         if verbose:
@@ -336,7 +323,7 @@ def main():
     use_model = USE_MODEL
 
     # Prepare data for loading the model
-    train_data, train_lang = loaddata(file_loc, 'train')
+    _, train_lang = loaddata(file_loc, 'train')
 
     # Load data for evaluation
     valid_data, _ = loaddata(file_loc, 'valid')
