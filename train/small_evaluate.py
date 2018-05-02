@@ -1,22 +1,27 @@
 """Evaluate the model."""
+import time
+
 import torch
 from torch.autograd import Variable
 
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+
 from preprocessing import data_iter
 from dataprepare import loaddata, data2index
-from train import get_batch, model_initialization, addpaddings
+from train import get_batch, model_initialization, addpaddings, find_max_block_numbers, initGlobalEncoderInput
 
 
 from model import docEmbedding, Seq2Seq
 from model import EncoderLIN, EncoderBiLSTM, EncoderBiLSTMMaxPool
 from model import HierarchicalEncoderRNN, HierarchicalBiLSTM, HierarchicalLIN
 from model import AttnDecoderRNN, HierarchicalDecoder
-from util import PriorityQueue
+from util import PriorityQueue, gettime
 
 
 from settings import file_loc, use_cuda
 from settings import EMBEDDING_SIZE, ENCODER_STYLE, DECODER_STYLE
-from settings import USE_MODEL
+from settings import USE_MODEL, Model_name
 
 from util import load_model
 
@@ -27,8 +32,7 @@ PAD_TOKEN = 2
 EOB_TOKEN = 4
 BLK_TOKEN = 5
 
-def hierarchical_predictwords(rt, re, rm, encoder, decoder, embedding_size,
-                              encoder_style, beam_size):
+def hierarchical_predictwords(rt, re, rm, encoder, decoder, embedding_size, langs, beam_size):
     """The function will predict the sentecnes given boxscore.
 
     Encode the given box score, decode it to sentences, and then
@@ -41,51 +45,32 @@ def hierarchical_predictwords(rt, re, rm, encoder, decoder, embedding_size,
     input_length = rt.size()[1]
     target_length = 1000
 
+    # MAX_BLOCK is the number of global hidden states
+    # block_lens is the start position of each block
     MAX_BLOCK, blocks_lens = find_max_block_numbers(batch_length, langs, rm)
-    BLOCK_JUMPS = 32
+
+    inputs = {"rt": rt, "re": re, "rm": rm}
 
     LocalEncoder = encoder.LocalEncoder
     GlobalEncoder = encoder.GlobalEncoder
 
-    # For now, these are redundant
-    local_encoder_outputs = Variable(torch.zeros(batch_length, input_length, embedding_size))
-    local_encoder_outputs = local_encoder_outputs.cuda() if use_cuda else local_encoder_outputs
-    global_encoder_outputs = Variable(torch.zeros(batch_length, MAX_BLOCK, embedding_size))
-    global_encoder_outputs = global_encoder_outputs.cuda() if use_cuda else global_encoder_outputs
-
-
     # Encoding
-    if encoder_style == 'BiLSTM':
-        init_hidden = encoder.initHidden(batch_length)
-        encoder_hidden, encoder_hiddens = encoder(rt, re, rm, init_hidden)
+    init_local_hidden = LocalEncoder.initHidden(batch_length)
+    init_global_hidden = GlobalEncoder.initHidden(batch_length)
+    local_encoder_outputs, local_hidden = LocalEncoder(inputs, init_local_hidden)
+    global_input = initGlobalEncoderInput(MAX_BLOCK, batch_length, input_length,
+                                          embedding_size, local_encoder_outputs)
+    global_encoder_outputs, global_hidden = GlobalEncoder({"local_hidden_states":
+                                                          global_input}, init_global_hidden)
+    """
+    Encoder Result Dimension: (batch, sequence length, hidden size)
+    """
+    local_encoder_outputs = local_encoder_outputs.permute(1, 0, 2)
+    global_encoder_outputs = global_encoder_outputs.permute(1, 0, 2)
 
-        # Store memory information
-        for ei in range(input_length):
-            encoder_outputs[:, ei] = encoder_hiddens[:, ei]
-
-    else:
-        # Local Encoder set up
-        init_local_hidden = LocalEncoder.initHidden(batch_length)
-        local_out, local_hidden = LocalEncoder({"rt": rt, "re": re, "rm": rm},
-                                               init_local_hidden)
-        # Global Encoder setup
-        global_input = Variable(torch.zeros(MAX_BLOCK, batch_length,
-                                            embedding_size))
-        global_input = global_input.cuda() if use_cuda else global_input
-        for ei in range(input_length):
-            if ei % BLOCK_JUMPS == 0:
-                # map ei to block number
-                global_input[int(ei / (BLOCK_JUMPS + 1)), :, :] = local_out[ei, :, :]
-
-        init_global_hidden = GlobalEncoder.initHidden(batch_length)
-        global_out, global_hidden = GlobalEncoder({"local_hidden_states":
-                                                  global_input}, init_global_hidden)
-        """
-        Store memory information
-        Unify dimension: (batch, sequence length, hidden size)
-        """
-        local_encoder_outputs = local_out.permute(1, 0, 2)
-        global_encoder_outputs = global_out.permute(1, 0, 2)
+    # Debugging: Test encoder outputs
+    # print(local_encoder_outputs)
+    # print(global_encoder_outputs)
 
     # The decoder init for developing
     global_decoder = decoder.global_decoder
@@ -102,11 +87,16 @@ def hierarchical_predictwords(rt, re, rm, encoder, decoder, embedding_size,
     l_input = Variable(torch.LongTensor(batch_length).zero_(), requires_grad=False)
     l_input = l_input.cuda() if use_cuda else l_input
 
+    # Reshape the local_encoder outputs to (batch * blocks, blk_size, hidden)
+    local_encoder_outputs = local_encoder_outputs.contiguous().view(batch_length * len(blocks_len),
+                                                                    input_length // len(blocks_len),
+                                                                    embedding_size)
+
     decoder_attentions = torch.zeros(target_length, input_length)
 
     # Initialize the Beam
-    # Each Beam cell contains [prob, route, decoder_hidden, atten]
-    beams = [[0, [SOS_TOKEN], encoder_hidden, decoder_attentions]]
+    # Each Beam cell contains [prob, route,gnh, lnh, g_input, g_attn_weight, atten]
+    beams = [[0, [SOS_TOKEN], gnh, lnh, g_input, None, decoder_attentions]]
 
     # For each step
     for di in range(target_length):
@@ -115,7 +105,7 @@ def hierarchical_predictwords(rt, re, rm, encoder, decoder, embedding_size,
         q = PriorityQueue()
         for beam in beams:
 
-            prob, route, decoder_hidden, atten = beam
+            prob, route, gnh, lnh, g_input, g_attn_weights, atten = beam
             destination = len(route) - 1
 
             # Get the lastest predecition
@@ -125,23 +115,48 @@ def hierarchical_predictwords(rt, re, rm, encoder, decoder, embedding_size,
             if decoder_input == EOS_TOKEN:
                 q.push(beam, prob)
                 continue
+            
+            if di == 0 or decoder_input == BLK_TOKEN:
+                g_output, gnh, g_context, g_attn_weights = global_decoder(
+                    g_input, gnh, global_encoder_outputs)
 
-            decoder_input = Variable(torch.LongTensor([decoder_input]))
-            decoder_input = decoder_input.cuda() if use_cuda else decoder_input
+            l_input = Variable(torch.LongTensor([decoder_input]), requires_grad=False)
+            l_input = l_input.cuda() if use_cuda else l_input
 
-            decoder_output, decoder_hidden, decoder_attention = decoder(
-                decoder_input, decoder_hidden, encoder_outputs)
+            l_output, lnh, l_context, l_attn_weights, pgen = local_decoder(
+                l_input, lnh, g_attn_weights, local_encoder_outputs, blocks_len)
+            
+            l_attn_weights = l_attn_weights.squeeze(1)
+            bg_attn_weights = g_attn_weights.view(batch_length * len(blocks_len), -1)
+            # print(l_attn_weights)
+            # print(g_attn_weights)
+            # print(bg_attn_weights)
+            combine_attn_weights = l_attn_weights * bg_attn_weights
+            combine_attn_weights = combine_attn_weights.view(batch_length, -1)
+            # print(torch.sum(combine_attn_weights))
+
+            if local_decoder.copy:
+                prob_copy = Variable(torch.zeros(l_output.shape), requires_grad=False)
+                prob_copy = prob_copy.cuda() if use_cuda else prob_copy
+
+                # Now we had rm as (batch, input) and combine_attn_weights as (batch, input)
+                # Add up to the pgen probability matrix
+                prob_copy = prob_copy.scatter_add(1, rm, combine_attn_weights)
+
+                l_output_new = (l_output.exp() + (1 - pgen) * prob_copy).log()
+            else:
+                l_output_new = l_output
 
             # Get the attention vector at each prediction
-            atten[destination, :decoder_attention.shape[2]] = decoder_attention.data[0, 0, :]
+            atten[destination, :combine_attn_weights.shape[1]] = combine_attn_weights.data[0, :]
 
             # decode the word
-            topv, topi = decoder_output.data.topk(beam_size)
+            topv, topi = l_output_new.data.topk(beam_size)
 
             for i in range(beam_size):
                 p = topv[0][i]
                 idp = topi[0][i]
-                new_beam = [prob + p, route + [idp], decoder_hidden, atten]
+                new_beam = [prob + p, route + [idp], gnh, lnh, lnh[-1, :, :], g_attn_weights, atten]
                 q.push(new_beam, new_beam[0])
 
         # Keep the highest K probability
@@ -152,13 +167,12 @@ def hierarchical_predictwords(rt, re, rm, encoder, decoder, embedding_size,
             break
 
     # Get decoded_words and decoder_attetntions
-    decoded_words = [lang.index2word[w] for w in beams[0][1][1:]]
-    decoder_attentions = beams[0][3]
+    decoded_words = [langs['summary'].index2word[w.item()] for w in beams[0][1][1:]]
+    decoder_attentions = beams[0][6]
     return decoded_words, decoder_attentions[:len(decoded_words)]
 
 
-def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
-                 encoder_style, beam_size):
+def predictwords(rt, re, rm, encoder, decoder, embedding_size, langs, beam_size):
     """The function will predict the sentecnes given boxscore.
     Encode the given box score, decode it to sentences, and then
     return the prediction and attention matrix.
@@ -214,13 +228,13 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
                 decoder_input, decoder_hidden, encoder_outputs)
 
             if decoder.copy:
-                prob = Variable(torch.zeros(decoder_output.shape), requires_grad=False)
-                prob = prob.cuda() if use_cuda else prob
+                prob_copy = Variable(torch.zeros(decoder_output.shape), requires_grad=False)
+                prob_copy = prob_copy.cuda() if use_cuda else prob_copy
 
                 decoder_attention = decoder_attention.squeeze(1)
-                prob = prob.scatter_add(1, rm, decoder_attention)
+                prob_copy = prob_copy.scatter_add(1, rm, decoder_attention)
 
-                decoder_output_new = (decoder_output.exp() + (1-pgen)*prob).log()
+                decoder_output_new = (decoder_output.exp() + (1-pgen)*prob_copy).log()
                 decoder_attention = decoder_attention.unsqueeze(1)                
             else:
                 decoder_output_new = decoder_output
@@ -230,13 +244,13 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
 
             # decode the word
             # print(decoder_output)
-            topv, topi = decoder_output.data.topk(beam_size)
-
+            topv, topi = decoder_output_new.data.topk(beam_size)
+            
+            
             for i in range(beam_size):
-                p = topv[0][i]
-                idp = topi[0][i]
+                p = topv[0,i]
+                idp = topi[0,i]
                 new_beam = [prob + p, route + [idp], decoder_hidden, atten]
-                # print(new_beam[0])
                 q.push(new_beam, new_beam[0])
 
         # Keep the highest K probability
@@ -247,7 +261,7 @@ def predictwords(rt, re, rm, summary, encoder, decoder, lang, embedding_size,
             break
 
     # Get decoded_words and decoder_attetntions
-    decoded_words = [lang.index2word[w.item()] for w in beams[0][1][1:]]
+    decoded_words = [langs['summary'].index2word[w.item()] for w in beams[0][1][1:]]
     decoder_attentions = beams[0][3]
     return decoded_words, decoder_attentions[:len(decoded_words)]
 
@@ -270,7 +284,7 @@ def evaluate(valid_set, langs, embedding_size,
 
     # Build the model
     model = Seq2Seq(encoder, decoder, None, decode_func, criterion, embedding_size, langs)
-
+    model.eval()
     # Get evaluate data
     valid_iter = data_iter(valid_set, batch_size=1, shuffle=False)
 
@@ -303,23 +317,45 @@ def evaluate(valid_set, langs, embedding_size,
             rt, re, rm, summary = rt.cuda(), re.cuda(), rm.cuda(), summary.cuda()
 
         # Get decoding words and attention matrix
-        decoded_words, decoder_attentions = predictwords(rt, re, rm, summary,
-                                                         encoder, decoder, langs['summary'],
-                                                         embedding_size, encoder_style,
-                                                         beam_size)
+        decoded_words, decoder_attentions = model.seq_decode(rt, re, rm, beam_size)
 
-        res = ' '.join(decoded_words[:-1])
+        res = ' '.join([ w for w in decoded_words[:-1] if w!='<PAD>'])
+        # res = ' '.join(decoded_words[:-1])
         if verbose:
+            print("Generate Summary {}:".format(iteration))
             print(res)
-        yield res
 
         # # FOR WRITING REPORTS ONLY
         # # Compare to the origin data
-        # triplets, gold_summary = data[0]
+            print("Reference Summary:")
+            triplets, gold_summary = data[0]
 
-        # for word in gold_summary:
-        #     print(word, end=' ')
-        # print(' ')
+            for word in gold_summary:
+                print(word, end=' ')
+            print(' ')
+            print(torch.sum(rt==EOB_TOKEN))
+            block_num = torch.sum(rt==EOB_TOKEN).item()
+            ctr = 0
+            fig = plt.figure(figsize=(40,60))
+            for i in range(block_num):
+                ctr_end = ctr
+                while rt[0,ctr_end] != EOB_TOKEN and ctr_end+1 < rt.shape[1]:
+                    ctr_end +=1
+                ax = fig.add_subplot(block_num, 1 ,i+1)
+                mat = ax.matshow(decoder_attentions.t()[ ctr: ctr_end+1 ,:], interpolation='nearest')
+                ctr = ctr_end+1
+            fig.subplots_adjust(right=0.8)
+            cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
+            fig.colorbar(mat, cax=cbar_ax)
+
+            #ax.set_xticklabels(decoded_words)
+            #ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
+            # ax.set_yticklabels(['']+alpha)
+
+            plt.savefig(Model_name+'_'+str(iteration)+'.png')
+        yield res
+
+        
 
         # showAttention(triplets, decoded_words, decoder_attentions)
     return
@@ -333,19 +369,23 @@ def main():
     decoder_style = DECODER_STYLE
     use_model = USE_MODEL
 
+    print(use_model)
+
     # Prepare data for loading the model
-    train_data, train_lang = loaddata(file_loc, 'train')
+    _, train_lang = loaddata(file_loc, 'train')
 
     # Load data for evaluation
     valid_data, _ = loaddata(file_loc, 'valid')
     valid_data = data2index(valid_data, train_lang)
     text_generator = evaluate(valid_data, train_lang, embedding_size,
                               encoder_style, decoder_style,
-                              use_model, beam_size=1, verbose=False)
+                              use_model, beam_size=15, verbose=True)
 
     # Generate Text
+    start = time.time()
     for idx, text in enumerate(text_generator):
-        print('Generate Summary {}:\n{}'.format(idx + 1, text))
+        print('Time: {}:\n'.format(gettime(start)))
 
 if __name__ == '__main__':
-    main()
+    with torch.no_grad():
+        main()
