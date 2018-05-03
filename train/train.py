@@ -20,7 +20,6 @@ from settings import file_loc, use_cuda, USE_MODEL
 from settings import EMBEDDING_SIZE, LR, ITER_TIME, BATCH_SIZE, GRAD_CLIP
 from settings import MAX_SENTENCES, ENCODER_STYLE, DECODER_STYLE, TOCOPY, MAX_TRAIN_NUM
 from settings import GET_LOSS, SAVE_MODEL, OUTPUT_FILE, COPY_PLAYER, MAX_LENGTH
-from settings import default_parameters
 
 import numpy as np
 
@@ -750,22 +749,14 @@ def evaluate(encoder, decoder, valid_set, lang,
 
 def setupconfig(args):
     """Set up and display the configuration."""
-    print("Command Line Options:")
-    # Read in command line parameters.
+    # print("Command Line Options:")
+    # # Read in command line parameters.
 
     parameters = {}
     for arg in vars(args):
         parameters[arg] = getattr(args, arg)
         print("{} = {}".format(arg, parameters[arg]))
-    print("---------------")
-    # If not present in command line, read in default parameters.
-    print("Using Defaults:")
 
-    for arg in default_parameters:
-        if parameters[arg] is None:
-            parameters[arg] = default_parameters[arg]
-            print("{} = {}".format(arg, parameters[arg]))
-    print("---------------")
     print("Parameter Settings:")
     hierarchical_choices = ['HierarchicalRNN', 'HierarchicalBiLSTM',
                             'HierarchicalLIN']
@@ -816,21 +807,41 @@ def parse_argument():
     decoder_choices = ['RNN', 'HierarchicalRNN']
 
     ap = argparse.ArgumentParser()
-    ap.add_argument("-embeddingsize", "--embedding_size", type=int)
-    ap.add_argument("-learningrate", "--learning_rate", type=float)
-    ap.add_argument("-batchsize", "--batch_size", type=int)
-    ap.add_argument("-getloss", "--get_loss", type=int)
-    ap.add_argument("-pretrain", "--use_model")
-    ap.add_argument("-encoder", "--encoder_style", choices=encoder_choices)
-    ap.add_argument("-decoder", "--decoder_style", choices=decoder_choices)
-    ap.add_argument("-epochsave", "--save_model", type=int)
-    ap.add_argument("-outputfile", "--output_file")
-    ap.add_argument("-tocopy", "--to_copy", choices=['True', 'False'])
-    ap.add_argument("-copyplayer", "--copy_player", choices=['True', 'False'])
-    ap.add_argument("-gradclip", "--grad_clip", type=int)
-    ap.add_argument("-maxlength", "--max_length", type=int)
+    ap.add_argument("-embeddingsize", "--embedding_size",
+                    type=int, default=EMBEDDING_SIZE)
+
+    ap.add_argument("-learningrate", "--learning_rate",
+                    type=float, default=LR)
+
+    ap.add_argument("-batchsize", "--batch_size",
+                    type=int, default=BATCH_SIZE)
+
+    ap.add_argument("-getloss", "--get_loss", type=int,
+                    default=GET_LOSS)
+
+    ap.add_argument("-pretrain", "--use_model", default=USE_MODEL)
+
+    ap.add_argument("-encoder", "--encoder_style",
+                    choices=encoder_choices, default=ENCODER_STYLE)
+
+    ap.add_argument("-decoder", "--decoder_style",
+                    choices=decoder_choices, default=DECODER_STYLE)
+
+    ap.add_argument("-epochsave", "--save_model", type=int, default=SAVE_MODEL)
+
+    ap.add_argument("-outputfile", "--output_file", default=OUTPUT_FILE)
+
+    ap.add_argument("-tocopy", "--to_copy", choices=['True', 'False'],
+                    default=TOCOPY)
+
+    ap.add_argument("-copyplayer", "--copy_player", choices=['True', 'False'],
+                    default=COPY_PLAYER)
+
+    ap.add_argument("-gradclip", "--grad_clip", type=int, default=GRAD_CLIP)
+
+    ap.add_argument("-maxlength", "--max_length", type=int, default=MAX_LENGTH)
     # max_sentence is optional
-    ap.add_argument("-maxsentece", "--max_sentece", type=int)
+    ap.add_argument("-maxsentece", "--max_sentece", type=int, default=MAX_SENTENCES)
 
     return ap.parse_args()
 

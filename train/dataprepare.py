@@ -27,7 +27,7 @@ class Lang:
         self.word2index = {"<SOS>": 0, "<EOS>": 1, "<PAD>": 2, "<UNK>": 3, "<EOB>": 4, "<BLK>": 5}
         self.word2count = {"<EOS>": 0, "<PAD>": 0, "<EOB>": 0, "<BLK>": 0}
         self.index2word = {0: "<SOS>", 1: "<EOS>", 2: "<PAD>", 3: "<UNK>", 4: "<EOB>", 5: "<BLK>"}
-        self.n_words = 5  # Count SOS and EOS
+        self.n_words = len(self.word2index)  # Count SOS and EOS
 
     def addword(self, word):
         """Add a word to the dict.

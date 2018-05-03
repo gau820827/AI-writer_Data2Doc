@@ -42,17 +42,8 @@ SAVE_MODEL = 5
 ENCODER_STYLE = 'HierarchicalRNN'
 DECODER_STYLE = 'HierarchicalRNN'
 OUTPUT_FILE = 'pretrain_copy_ms5'
-COPY_PLAYER = True
-TOCOPY = True
-
-default_parameters = {'embedding_size': EMBEDDING_SIZE, 'learning_rate': LR,
-                      'batch_size': BATCH_SIZE, 'grad_clip': GRAD_CLIP,
-                      'get_loss': GET_LOSS, 'use_model': USE_MODEL,
-                      'encoder_style': ENCODER_STYLE, 'max_length': MAX_LENGTH,
-                      'decoder_style': DECODER_STYLE,
-                      'max_sentece': MAX_SENTENCES,
-                      'save_model': SAVE_MODEL, 'output_file': OUTPUT_FILE,
-                      'to_copy': TOCOPY, 'copy_player': COPY_PLAYER}
+COPY_PLAYER = False
+TOCOPY = False
 
 # DATA PREPROCESSING
 MAX_PLAYERS = 31  # information taken from rotowire
