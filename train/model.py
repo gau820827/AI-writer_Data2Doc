@@ -22,12 +22,15 @@ class Seq2Seq(object):
         return self.train_func(rt, re, rm, summary,
                                self.encoder, self.decoder,
                                self.criterion, self.embedding_size, self.langs)
+
     def train(self):
         self.encoder.train()
         self.decoder.train()
+
     def eval(self):
         self.encoder.eval()
         self.decoder.eval()
+
 
 class docEmbedding(nn.Module):
     """The class for embedding records.
@@ -130,9 +133,9 @@ class EncoderLIN(nn.Module):
             return result
 
 
-class HierarchicalEncoderRNN(nn.Module):
+class HierarchicalRNN(nn.Module):
     def __init__(self, hidden_size, local_embed):
-        super(HierarchicalEncoderRNN, self).__init__()
+        super(HierarchicalRNN, self).__init__()
         self.LocalEncoder = EncoderRNN(hidden_size, local_embed, level='local')
         self.GlobalEncoder = EncoderRNN(hidden_size, None, level='global')
 
