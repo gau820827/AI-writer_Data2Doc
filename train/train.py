@@ -320,12 +320,12 @@ def addpaddings(tokens):
 def train(train_set, langs, embedding_size=EMBEDDING_SIZE, learning_rate=LR,
           batch_size=BATCH_SIZE, get_loss=GET_LOSS, grad_clip=GRAD_CLIP,
           encoder_style=ENCODER_STYLE, decoder_style=DECODER_STYLE,
+          to_copy=TOCOPY, epoch_time=EPOCH_TIME, layer_depth=LAYER_DEPTH,
           max_length=MAX_LENGTH, max_sentece=MAX_SENTENCES,
-          save_model=SAVE_MODEL, output_file=OUTPUT_FILE, iter_num=iterNum,
-          to_copy=TOCOPY, epoch_time=EPOCH_TIME, pretrain=PRETRAIN,
-          layer_depth=LAYER_DEPTH):
+          save_model=SAVE_MODEL, output_file=OUTPUT_FILE,
+          iter_num=iterNum, pretrain=PRETRAIN):
     """The training procedure."""
-    # Test arg parser (For Debugging)
+    # # Test arg parser (For Debugging)
     # print("embedding_size={}, learning_rate={}, batch_size={}, get_loss={}, grad_clip={},\
     #         encoder_style={}, decoder_style={}, max_length={},\
     #         max_sentece={}, save_model={}, output_file={}, to_copy={},\
@@ -342,7 +342,6 @@ def train(train_set, langs, embedding_size=EMBEDDING_SIZE, learning_rate=LR,
     emb.init_weights()
 
     # Choose encoder style
-    # TODO:: Set up a choice for hierarchical or not
     if encoder_style == 'LIN':
         encoder = EncoderLIN(embedding_size, emb)
 
@@ -390,13 +389,19 @@ def train(train_set, langs, embedding_size=EMBEDDING_SIZE, learning_rate=LR,
     # loss_optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()),
     #                             lr=learning_rate)
 
+    # Load pre-train model
+    use_model = None
     if pretrain is not None and iter_num is not None:
         use_model = ['./models/' + pretrain + '_' + s + '_' + str(iter_num)
                      for s in ['encoder', 'decoder', 'optim']]
+
+    if use_model is not None:
         encoder = load_model(encoder, use_model[0])
         decoder = load_model(decoder, use_model[1])
         loss_optimizer.load_state_dict(torch.load(use_model[2]))
-        print("Using Pretrained Model {}".format(use_model))
+        print("Load Pretrain Model {}".format(use_model))
+    else:
+        print("Not use Pretrain Model")
 
     criterion = nn.NLLLoss()
 
@@ -826,13 +831,13 @@ def parse_argument():
     decoder_choices = ['RNN', 'HierarchicalRNN']
 
     ap = argparse.ArgumentParser()
-    ap.add_argument("-embeddingsize", "--embedding_size",
+    ap.add_argument("-embed", "--embedding_size",
                     type=int, default=EMBEDDING_SIZE)
 
-    ap.add_argument("-learningrate", "--learning_rate",
+    ap.add_argument("-lr", "--learning_rate",
                     type=float, default=LR)
 
-    ap.add_argument("-batchsize", "--batch_size",
+    ap.add_argument("-batch", "--batch_size",
                     type=int, default=BATCH_SIZE)
 
     ap.add_argument("-getloss", "--get_loss", type=int,
@@ -848,7 +853,7 @@ def parse_argument():
 
     ap.add_argument("-outputfile", "--output_file", default=OUTPUT_FILE)
 
-    ap.add_argument("-tocopy", "--to_copy", choices=['True', 'False'],
+    ap.add_argument("-copy", "--to_copy", choices=['True', 'False'],
                     default=TOCOPY)
 
     ap.add_argument("-copyplayer", "--copy_player", choices=['True', 'False'],
@@ -858,15 +863,16 @@ def parse_argument():
 
     ap.add_argument("-pretrain", "--pretrain", default=PRETRAIN)
 
-    ap.add_argument("-iterNum", "--iter_num", default=iterNum)
+    ap.add_argument("-iternum", "--iter_num", default=iterNum)
 
-    ap.add_argument("-layerdepth", "--layer_depth", type=int, default=LAYER_DEPTH)
+    ap.add_argument("-layer", "--layer_depth", type=int, default=LAYER_DEPTH)
 
-    ap.add_argument("-epochtime", "--epoch_time", type=int, default=EPOCH_TIME)
+    ap.add_argument("-epoch", "--epoch_time", type=int, default=EPOCH_TIME)
 
     ap.add_argument("-maxlength", "--max_length", type=int, default=MAX_LENGTH)
+
     # max_sentence is optional
-    ap.add_argument("-maxsentece", "--max_sentece", type=int, default=MAX_SENTENCES)
+    ap.add_argument("-maxsentence", "--max_sentence", type=int, default=MAX_SENTENCES)
 
     return ap.parse_args()
 
