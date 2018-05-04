@@ -161,9 +161,12 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
                                                                     embedding_size)
     for di in range(target_length):
         # Feed the global decoder
-        if di == 0 or summary[0, di].data[0] == BLK_TOKEN:
+        if di == 0 or l_input[0].data[0] == BLK_TOKEN:
             g_output, gnh, g_context, g_attn_weights = global_decoder(
                 g_input, gnh, global_encoder_outputs)
+
+            # Reset the local init status
+            lnh = gnh
 
         # Feed the target as the next input
         l_output, lnh, l_context, l_attn_weights, pgen = local_decoder(
@@ -269,14 +272,15 @@ def add_sentence_paddings(summarizes):
     for i in range(len(summarizes)):
         summarizes[i] += [BLK_TOKEN for j in range(max_blocks_length - len_block(summarizes[i]))]
 
-    # Aligns with blocks
+    # Aligns with blocks, and remove <BLK> at this time
     def to_matrix(summary):
         mat = [[] for i in range(len_block(summary) + 1)]
         idt = 0
         for word in summary:
-            mat[idt].append(word)
             if word == BLK_TOKEN:
                 idt += 1
+            else:
+                mat[idt].append(word)
         return mat
 
     for i in range(len(summarizes)):
@@ -290,6 +294,7 @@ def add_sentence_paddings(summarizes):
     for i in range(len(summarizes)):
         for j in range(len(summarizes[i])):
             summarizes[i][j] += [PAD_TOKEN for k in range(max_sentence_length - len(summarizes[i][j]))]
+            summarizes[i][j] += [BLK_TOKEN]
 
     # Join back the matrix
     def to_list(matrix):
@@ -414,7 +419,8 @@ def train(train_set, langs, embedding_size=EMBEDDING_SIZE, learning_rate=LR,
             rm = addpaddings(rm)
 
             # For summary paddings, if the model is herarchical then pad between sentences
-            if decoder_style == 'HierarchicalRNN':
+            # If the batch_size is 1 then we don't need to do sentence padding
+            if decoder_style == 'HierarchicalRNN' and batch_size != 1:
                 summary = add_sentence_paddings(summary)
             else:
                 summary = addpaddings(summary)
