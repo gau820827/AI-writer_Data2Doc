@@ -321,7 +321,7 @@ def train(train_set, langs, embedding_size=EMBEDDING_SIZE, learning_rate=LR,
           batch_size=BATCH_SIZE, get_loss=GET_LOSS, grad_clip=GRAD_CLIP,
           encoder_style=ENCODER_STYLE, decoder_style=DECODER_STYLE,
           to_copy=TOCOPY, epoch_time=EPOCH_TIME, layer_depth=LAYER_DEPTH,
-          max_length=MAX_LENGTH, max_sentece=MAX_SENTENCES,
+          max_length=MAX_LENGTH, max_sentence=MAX_SENTENCES,
           save_model=SAVE_MODEL, output_file=OUTPUT_FILE,
           iter_num=iterNum, pretrain=PRETRAIN):
     """The training procedure."""
@@ -776,7 +776,7 @@ def setupconfig(args):
     parameters = {}
     for arg in vars(args):
         parameters[arg] = getattr(args, arg)
-        print("{} = {}".format(arg, parameters[arg]))
+        # print("{} = {}".format(arg, parameters[arg]))
     print("---------------")
     print("Parameter Settings:")
     hierarchical_choices = ['HierarchicalRNN', 'HierarchicalBiLSTM',
