@@ -1,6 +1,6 @@
 """This is the module for preparing data."""
 from preprocessing import readfile
-from settings import file_loc, MAX_SENTENCES, PLAYER_PADDINGS
+from settings import file_loc, MAX_SENTENCES, PLAYER_PADDINGS, COPY_PLAYER
 
 
 class Lang:
@@ -75,7 +75,7 @@ def readLang(data_set):
             re.addword(triplet[1])
             rm.addword(triplet[2])
             summarize.addword(triplet[2])
-    for v in data_set:    
+    for v in data_set:
         for word in v.summary:
             # summary
             summarize.addword(word)
@@ -83,7 +83,7 @@ def readLang(data_set):
     return rt, re, rm, summarize
 
 
-def loaddata(data_dir, mode='train', max_len=None):
+def loaddata(data_dir, mode='train', max_len=None, copy_player=COPY_PLAYER):
     """The function for loading data.
 
     This function will load the data, and then turns it into
@@ -96,7 +96,7 @@ def loaddata(data_dir, mode='train', max_len=None):
     Returns:
         A list of reading dataset and a dictionary of Langs
     """
-    data_set = readfile(data_dir + mode + '.json')
+    data_set = readfile(data_dir + mode + '.json', copy_player=copy_player)
     if max_len is not None:
         data_set = data_set[:max_len]
     rt, re, rm, summary = readLang(data_set)
@@ -172,9 +172,9 @@ def showsentences(dataset):
 
 
 if __name__ == '__main__':
-    train_data, train_lang = loaddata(file_loc, 'train')
-    valid_data, _ = loaddata(file_loc, 'valid')
-    test_data, _ = loaddata(file_loc, 'test')
+    train_data, train_lang = loaddata(file_loc, 'train', copy_player=COPY_PLAYER)
+    valid_data, _ = loaddata(file_loc, 'valid', copy_player=COPY_PLAYER)
+    test_data, _ = loaddata(file_loc, 'test', copy_player=COPY_PLAYER)
     train_data = data2index(train_data, train_lang)
     valid_data = data2index(valid_data, train_lang)
     test_data = data2index(test_data, train_lang)

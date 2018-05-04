@@ -4,37 +4,31 @@ file_loc = '../boxscore-data/rotowire/'
 use_cuda = torch.cuda.is_available()
 
 MAX_LENGTH = 800
-LAYER_DEPTH = 2
 MAX_SENTENCES = None
 MAX_TRAIN_NUM = 200
 
-Model_name = None
-#Model_name = 'pretrain_ms8'
-iterNum = 500
-USE_MODEL = None
-if Model_name is not None:
-    USE_MODEL = ['./models/' + Model_name + '_' + s + '_' + str(iterNum) for s in ['encoder', 'decoder', 'optim']]
-# USE_MODEL = ['./models/clipped_encoder_25440', './models/clipped_decoder_25440']
-# USE_MODEL = ['./models/long3_encoder_36040',
-#              './models/long3_decoder_36040',
-# './models/long3_optim_36040']
+# PRETRAIN is the model name that you want read
+# The naming convention is 'PRETRAIN_iterNum'
+PRETRAIN = None
+iterNum = None
 
-# Parameter for training
+# Default hyper-parameters for training
 EMBEDDING_SIZE = 600
 LR = 0.01  # Adagrad
 # LR = 0.003  # Adam
-ITER_TIME = 220
+EPOCH_TIME = 220
 BATCH_SIZE = 2
 GRAD_CLIP = 5
+LAYER_DEPTH = 2
 
-# Parameter for display
+# Default parameters for display
 GET_LOSS = 1
 SAVE_MODEL = 5
 
 # Choose models
 
 # ENCODER_STYLE = 'LIN'
-#  = 'BiLSTM'
+# ENCODER_STYLE = 'BiLSTM'
 # ENCODER_STYLE = 'RNN'
 # DECODER_STYLE = 'RNN'
 
