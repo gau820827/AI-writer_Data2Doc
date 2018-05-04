@@ -36,26 +36,54 @@ starter with more than 10 points , as he totaled 15 points , five
 rebounds and four assists. . . ...
 ```
 
-## Settings
+## Arguments
 
-In train/settings.py you can find the configurations.
+The `train/train.py` accepts the following arguments.
 
-### Parameter for model
-* `LAYER_DEPTH = 2`, the depth of recurrent unit, default = 2.
-* `EMBEDDING_SIZE = 600`, the hidden size for embedding, default = 600.
+(The default configurations for each argument can be found in `train/settings.py`.)
 
-### Parameter for training
-* `MAX_SENTENCES = None`, limit the maximum length for training. Set lower (e.g 5) for faster training speed. Set None to train for entire corpus.
-* `LR = 0.01`, learning rate.
-* `ITER_TIME = 10000`
-* `BATCH_SIZE = 8`
-* `USE_MODEL = None`, load trained model before training.
+```
+  # Parameters for model
+  -embed EMBEDDING_SIZE,    the hidden size for embedding,, default = 600
+  -lr LR,                   initial learning rate, default = 0.01
+  -batch BATCH_SIZE,        batch size, default = 2
+  
+  # Parameters for model
+  -encoder ENCODER_STYLE,   type of encoder NN (LIN, BiLSTM, RNN, BiLSTMMax, HierarchicalRNN,
+                            HierarchicalBiLSTM, HierarchicalLIN)
+  -decoder DECODER_STYLE,   type of decoder NN (RNN, HierarchcialRNN)
+  -copy,                    if apply pointer-generator network(True, False), default = False
+ 
+  # Parameters for training
+  -gradclip GRAD_CLIP,      gradient clipping, default = 2
+  -pretrain PRETRAIN,       file name of pretrained model (must assign with iternum)
+  -iternum ITER_NUM,        file name of pretraiend model (must assign with pretrain)
+  -layer LAYER_DEPTH,       the depth of recurrent units, default = 2; no depth for linear units
+  -copyplayer,              if include player's information in data, default = False 
+  -epoch EPOCH_TIME,        maximum epoch time for training
+  -maxlength MAX_LENGTH,    maximum words for each sentence
+  -maxsentece MAX_SENTECE,  limit the maximum length for training. Set lower (e.g 5) for faster training speed. If not specify, program will train entire corpus.
 
-### Parameter for display
-* `GET_LOSS = 1`, print out average loss every `GET_LOSS` iterations.
-* `SAVE_MODEL = 5000`, save the model every `SAVE_MODEL` iterations.
-* `OUTPUT_FILE = 'default'`, starting name for saving the model. During training, encoder and decoder would be saved as `[OUTPUT_FILE]_[encoder|decoder]_[iter_time]` every `SAVE_MODEL` iteratons.
-* `ENCODER_STYLE = 'BiLSTM'`, choose encoder model, currently I have 3 styles -- `'RNN'`, `'LIN'` and `'BiLSTM'`. All these archotectures are within seq2seq with attention framework.
+  # Parameters for display
+  -getloss GET_LOSS,        print out average loss every `GET_LOSS` iterations.
+  -epochsave SAVE_MODEL,    save the model every `SAVE_MODEL` epochs.
+  -outputfile OUTPUT_FILE,  starting name for saving the model. During training, encoder and decoder would be saved as `[OUTPUT_FILE]_[encoder|decoder]_[iter_time]` every `SAVE_MODEL` epochs.
+
+```
+
+
+With above arguments, a variety of parameter tuning could be trained:
+```
+python train.py # This will train using default settings in `train/settings.py`
+
+python train.py -embed 300 -lr 0.01 -batch 3 -getloss 20 -encoder HierarchicalRNN -decoder HierarchicalRNN -epochsave 12 -copy True -copyplayer False -gradclip 2 -layer 2 -epoch 3 -outputfile pretrain_copy -pretrain hbilstm -iternum 200
+
+python train.py -embed 720 -lr 0.02 -batch 3 -getloss 10 -encoder HierarchicalLIN -decoder HierarchicalRNN -epochsave 5 -copy True -copyplayer True -gradclip 3 -maxsentence 800  -epoch 3
+
+python train.py -embed 512 -lr 0.03 -batch 3 -getloss 10 -encoder BiLSTM -decoder RNN -epochsave 12 -copy True -copyplayer True -gradclip 3 -maxsentence 230 -layer 2 -epoch 3
+
+python train.py -embed 600 -lr 0.02 -batch 3 -getloss 10 -encoder LIN -decoder RNN -epochsave 12 -copy True -copyplayer False -gradclip 5 -maxsentence 800 -layer 2 -epoch 3
+```
 
 ## More Details
 

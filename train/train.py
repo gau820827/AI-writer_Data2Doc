@@ -362,8 +362,7 @@ def train(train_set, langs, embedding_size=EMBEDDING_SIZE, learning_rate=LR,
         encoder = HierarchicalBiLSTM(**encoder_args)
 
     elif encoder_style == 'HierarchicalLIN':
-        encoder_args = {"hidden_size": embedding_size, "local_embed": emb,
-                        "n_layers": layer_depth}
+        encoder_args = {"hidden_size": embedding_size, "local_embed": emb}
         encoder = HierarchicalLIN(**encoder_args)
 
     else:
@@ -787,9 +786,14 @@ def setupconfig(args):
     print("Parameter Settings:")
     hierarchical_choices = ['HierarchicalRNN', 'HierarchicalBiLSTM',
                             'HierarchicalLIN']
+    plain_choices = ['LIN', 'BiLSTM', 'RNN', 'BiLSTMMax']
 
     if parameters['encoder_style'] in hierarchical_choices and parameters['decoder_style'] != 'HierarchicalRNN':
         print("You must give me two hierarchical NNs!!!!!!!!!")
+        quit()
+
+    if parameters['encoder_style'] in plain_choices and parameters['decoder_style'] != 'RNN':
+        print("You must give me two plain NNs!!!!!!!!!")
         quit()
 
     copy_player = COPY_PLAYER
@@ -830,8 +834,8 @@ def main(args):
 
 def parse_argument():
     """Hyperparmeter tuning."""
-    encoder_choices = ['EncoderLIN', 'EncoderBiLSTM', 'EncoderRNN',
-                       'EncoderBiLSTMMaxPool', 'HierarchicalRNN',
+    encoder_choices = ['LIN', 'BiLSTM', 'RNN',
+                       'BiLSTMMax', 'HierarchicalRNN',
                        'HierarchicalBiLSTM', 'HierarchicalLIN']
 
     decoder_choices = ['RNN', 'HierarchicalRNN']
