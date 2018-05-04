@@ -5,7 +5,7 @@ use_cuda = torch.cuda.is_available()
 
 MAX_LENGTH = 800
 MAX_SENTENCES = None
-MAX_TRAIN_NUM = 200
+MAX_TRAIN_NUM = None
 
 # PRETRAIN is the model name that you want read
 # The naming convention is 'PRETRAIN_iterNum'
