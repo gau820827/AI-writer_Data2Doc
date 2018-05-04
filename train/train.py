@@ -772,7 +772,7 @@ def setupconfig(args):
     for arg in vars(args):
         parameters[arg] = getattr(args, arg)
         print("{} = {}".format(arg, parameters[arg]))
-
+    print("---------------")
     print("Parameter Settings:")
     hierarchical_choices = ['HierarchicalRNN', 'HierarchicalBiLSTM',
                             'HierarchicalLIN']
