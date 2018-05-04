@@ -72,17 +72,29 @@ The `train/train.py` accepts the following arguments.
 ```
 
 
-With above arguments, a variety of parameter tuning could be trained:
-```
+With above arguments, a variety of configurations could be trained:
+```python
 python train.py # This will train using default settings in `train/settings.py`
 
-python train.py -embed 300 -lr 0.01 -batch 3 -getloss 20 -encoder HierarchicalRNN -decoder HierarchicalRNN -epochsave 12 -copy True -copyplayer False -gradclip 2 -layer 2 -epoch 3 -outputfile pretrain_copy -pretrain hbilstm -iternum 200
+python train.py -embed 300 -lr 0.01 -batch 3 -getloss 20 -encoder HierarchicalRNN 
+                -decoder HierarchicalRNN -epochsave 12 -copy True -copyplayer False 
+                -gradclip 2 -layer 2 -epoch 3 -outputfile pretrain_copy 
+                -pretrain hbilstm -iternum 200
+                # -pretrain and -iternum must be specified together
+                # the corresponding pretrained model name will be in the format:
+                #    [pretrain]_[encoder|decoder|optim]_[iter_num]
 
-python train.py -embed 720 -lr 0.02 -batch 3 -getloss 10 -encoder HierarchicalLIN -decoder HierarchicalRNN -epochsave 5 -copy True -copyplayer True -gradclip 3 -maxsentence 800  -epoch 3
+python train.py -embed 720 -lr 0.02 -batch 3 -getloss 10 -encoder HierarchicalLIN 
+                -decoder HierarchicalRNN -epochsave 5 -copy True -copyplayer True 
+                -gradclip 3 -maxsentence 800  -epoch 3
 
-python train.py -embed 512 -lr 0.03 -batch 3 -getloss 10 -encoder BiLSTM -decoder RNN -epochsave 12 -copy True -copyplayer True -gradclip 3 -maxsentence 230 -layer 2 -epoch 3
+python train.py -embed 512 -lr 0.03 -batch 3 -getloss 10 -encoder BiLSTM 
+                -decoder RNN -epochsave 12 -copy True -copyplayer True 
+                -gradclip 3 -maxsentence 230 -layer 2 -epoch 3
 
-python train.py -embed 600 -lr 0.02 -batch 3 -getloss 10 -encoder LIN -decoder RNN -epochsave 12 -copy True -copyplayer False -gradclip 5 -maxsentence 800 -layer 2 -epoch 3
+python train.py -embed 600 -lr 0.02 -batch 3 -getloss 10 -encoder LIN 
+                -decoder RNN -epochsave 12 -copy True -copyplayer False 
+                -gradclip 5 -maxsentence 800 -layer 2 -epoch 3
 ```
 
 ## More Details
