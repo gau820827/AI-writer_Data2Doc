@@ -816,9 +816,10 @@ def main(args):
     if MAX_TRAIN_NUM is not None:
         train_data = train_data[:MAX_TRAIN_NUM]
 
-    train_data = data2index(train_data, train_lang)
+    train_data = data2index(train_data, train_lang, max_sentences=parameters['max_sentence'])
 
     encoder, decoder = train(train_data, train_lang, **parameters)
+
     # For evaluation
     valid_data, _ = loaddata(file_loc, 'valid',
                              copy_player=copy_player)
