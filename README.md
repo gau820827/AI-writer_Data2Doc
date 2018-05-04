@@ -59,7 +59,7 @@ The `train/train.py` accepts the following arguments.
   -pretrain PRETRAIN,       file name of pretrained model (must assign with iternum)
   -iternum ITER_NUM,        file name of pretraiend model (must assign with pretrain)
   -layer LAYER_DEPTH,       the depth of recurrent units, default = 2; no depth for linear units
-  -copyplayer,              if include player's information in data, default = False 
+  -copyplayer COPY_PLAYER,  if include player's information in data, default = False 
   -epoch EPOCH_TIME,        maximum epoch time for training
   -maxlength MAX_LENGTH,    maximum words for each sentence
   -maxsentece MAX_SENTECE,  limit the maximum length for training. Set lower (e.g 5) for faster training speed. If not specify, program will train entire corpus.
