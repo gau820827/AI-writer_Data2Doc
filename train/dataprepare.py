@@ -120,6 +120,7 @@ def data2index(data_set, langs, max_sentences=MAX_SENTENCES):
     Args:
         dataset: A list which read from preprocessing.readfile()
         langs: A dictionary of Langs containing rt, re, rm, and summary
+        max_sentences: An integer indicates the maximum number of sentences
 
     Returns:
         A list, the orginal dataset appending with idx_triplets and idx_summary
@@ -151,7 +152,7 @@ def data2index(data_set, langs, max_sentences=MAX_SENTENCES):
             if word == '.':
                 sentence_cnt += 1
 
-            if MAX_SENTENCES is not None and sentence_cnt >= MAX_SENTENCES:
+            if max_sentences is not None and sentence_cnt >= max_sentences:
                 break
 
         # data_set[i].append([idx_triplets] + [idx_summary])
