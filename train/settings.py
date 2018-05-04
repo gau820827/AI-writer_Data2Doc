@@ -8,12 +8,11 @@ LAYER_DEPTH = 2
 MAX_SENTENCES = None
 MAX_TRAIN_NUM = 200
 
-Model_name = None
-#Model_name = 'pretrain_ms8'
-iterNum = 500
-USE_MODEL = None
-if Model_name is not None:
-    USE_MODEL = ['./models/' + Model_name + '_' + s + '_' + str(iterNum) for s in ['encoder', 'decoder', 'optim']]
+PRETRAIN = None
+# Model_name = 'pretrain_ms8'
+iterNum = None
+
+
 # USE_MODEL = ['./models/clipped_encoder_25440', './models/clipped_decoder_25440']
 # USE_MODEL = ['./models/long3_encoder_36040',
 #              './models/long3_decoder_36040',
@@ -23,7 +22,7 @@ if Model_name is not None:
 EMBEDDING_SIZE = 600
 LR = 0.01  # Adagrad
 # LR = 0.003  # Adam
-ITER_TIME = 220
+EPOCH_TIME = 220
 BATCH_SIZE = 2
 GRAD_CLIP = 5
 

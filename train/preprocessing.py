@@ -35,7 +35,7 @@ class Boxdata:
         self.sent_leng = 0
 
 
-def readfile(filename):
+def readfile(filename, copy_player=COPY_PLAYER):
     """The function to prepare data.
 
     Read the json file into vectors, and then wrap it.
@@ -73,14 +73,14 @@ def readfile(filename):
             # test_box_score_aligned(d)
 
             boxdata = Boxdata()
-            boxdata.triplets = doc2vec(d)
+            boxdata.triplets = doc2vec(d, copy_player=copy_player)
             boxdata.summary = add_blocks(d['summary'])
             # result.append([doc2vec(d), add_blocks(d['summary'])])
             result.append(boxdata)
     return result
 
 
-def doc2vec(doc):
+def doc2vec(doc, copy_player=COPY_PLAYER):
     """The function to extract information to triplets.
 
     Extract box_score informations to the format (r.t, r.e, r.m),
@@ -156,7 +156,7 @@ def doc2vec(doc):
 
     for k in keys:
         if k == 'box_score':
-            if COPY_PLAYER:
+            if copy_player:
                 ignore = []
             else:
                 ignore = ['FIRST_NAME', 'SECOND_NAME', 'PLAYER_NAME']
@@ -290,9 +290,9 @@ def align_box_score(doc):
 
 def main():
     """A minitest function."""
-    train_set = readfile(file_loc + 'train.json')
-    valid_set = readfile(file_loc + 'valid.json')
-    test_set = readfile(file_loc + 'test.json')
+    train_set = readfile(file_loc + 'train.json', copy_player=COPY_PLAYER)
+    valid_set = readfile(file_loc + 'valid.json', copy_player=COPY_PLAYER)
+    test_set = readfile(file_loc + 'test.json', copy_player=COPY_PLAYER)
 
     train_iter = data_iter(train_set)
     valid_iter = data_iter(valid_set)
