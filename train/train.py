@@ -36,24 +36,26 @@ def get_batch(batch):
 
     Returns:
         batch_data: The origin processed data
-                    (i.e batch_size * (triples, summary))
+                    (i.e batch_size * (triples, summary, osummary))
         batch_idx_data: The indexing-processed data
-                        (e.g batch_size * (r.t, r.e, r.m, summary))
+                        (e.g batch_size * (r.t, r.e, r.m, summary, osummary))
 
     """
     batch_data = []
-    batch_idx_data = [[], [], [], []]
+    batch_idx_data = [[], [], [], [], []]
     for d in batch:
         idx_data = [[], [], []]  # for each triplet
         batch_data.append([d.triplets, d.summary])  # keep the original data/ not indexed version
         for triplets in d.idx_data[0]:
+            print(triplets)
             for idt, t in enumerate(triplets):
                 idx_data[idt].append(t)
 
         for idb, b in enumerate(idx_data):
             batch_idx_data[idb].append(b)
-
+        print(d.idx_data)
         batch_idx_data[3].append(d.idx_data[1])
+        batch_idx_data[4].append(d.idx_data[2])
 
     return batch_data, batch_idx_data
 
@@ -84,18 +86,18 @@ def initGlobalEncoderInput(MAX_BLOCK, batch_length, input_length, embedding_size
     return global_input
 
 
-def sequenceloss(rt, re, rm, summary, model):
+def sequenceloss(rt, re, rm, orm, summary, model):
     """Function for train on sentences.
 
     This function will calculate the gradient and NLLloss on sentences,
     and then return the loss.
 
     """
-    return model.seq_train(rt, re, rm, summary)
+    return model.seq_train(rt, re, rm, orm, summary)
 
 
-def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
-                           criterion, embedding_size, langs):
+def Hierarchical_seq_train(rt, re, rm, orm, summary, encoder, decoder,
+                           criterion, embedding_size, langs, oov_dict):
     batch_length = rt.size()[0]
     input_length = rt.size()[1]
     target_length = summary.size()[1]
@@ -198,8 +200,8 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
     return loss
 
 
-def Plain_seq_train(rt, re, rm, summary, encoder, decoder,
-                    criterion, embedding_size, langs):
+def Plain_seq_train(rt, re, rm, orm, summary, encoder, decoder,
+                    criterion, embedding_size, langs, oov_dict):
     batch_length = rt.size()[0]
     input_length = rt.size()[1]
     target_length = summary.size()[1]
@@ -227,20 +229,6 @@ def Plain_seq_train(rt, re, rm, summary, encoder, decoder,
     decoder_input = Variable(torch.LongTensor(batch_length).zero_(), requires_grad=False)
     decoder_input = decoder_input.cuda() if use_cuda else decoder_input
     
-    # Calculate OOVs
-    # 0 is <KWN>
-    # oov2index = {'<KWN>':0}
-    # oov2_ctr = 1
-    # print(rm[rm==3])
-    # for b in range(batch_length):
-    #     print(data[b][1])
-    #     for i in range(len(data[b][1])):
-    #         if rm.data[b,i] == 3 and data[b][1][i] not in oov2index:
-    #             oov2index[data[b][1][i]] = oov2_ctr
-    #             oov2_ctr += 1
-
-    # print(oov2index)
-
     # Feed the target as the next input
     for di in range(target_length):
 
@@ -255,26 +243,18 @@ def Plain_seq_train(rt, re, rm, summary, encoder, decoder,
             decoder_attention = decoder_attention.squeeze(1)
             prob = prob.scatter_add(1, rm, decoder_attention)
             # reset <UNK> prob
-            # prob[:,3] = 0
-            # # calculate oov prob.
-            # oovrm = [[ (oov2index[w] if w in oov2index else 0) for w in data[i][1]] for i in range(batch_length)]
-            # oovrm = addpaddings(oovrm ,toZero=True)
-            # oovrm = Variable(torch.LongTensor(oovrm), requires_grad=False)
-            # oovrm = oovrm.cuda() if use_cuda else oovrm
-            # #print(rm!=3)
-            # #print(oovrm==0)
-            # #print(torch.sum((rm!=3) - (oovrm==0), 1))
-            # prob_oov = Variable(torch.zeros([batch_length, oov2_ctr]), requires_grad=False)
-            # prob_oov = prob_oov.cuda() if use_cuda else prob_oov
+            prob[:,3] = 0
+            # calculate oov prob.
+            print()
+            prob_oov = Variable(torch.zeros([batch_length, len(oov_dict)]), requires_grad=False)
+            prob_oov = prob_oov.cuda() if use_cuda else prob_oov
 
-            # prob_oov = prob_oov.scatter_add(1, oovrm, decoder_attention)
-            # prob_oov[:,0] = 0
-
-            #print(torch.sum(prob, 1))
-            #print(torch.sum(prob_oov, 1))
-
+            prob_oov = prob_oov.scatter_add(1, orm, decoder_attention)
+            prob_oov = prob_oov.log()
+            prob_oov[:,0] = 0
+            
             decoder_output_new = (decoder_output.exp() + (1-pgen)*prob).log()
-            print(torch.sum(decoder_output_new.exp(), 1) + torch.sum((1-pgen)*prob_oov, 1))
+            loss += criterion((1-pgen).log() + prob_oov, orm)
         else:
             decoder_output_new = decoder_output
         loss += criterion(decoder_output_new, summary[:, di])
@@ -406,7 +386,7 @@ def model_initialization(encoder_style, decoder_style, langs, embedding_size, le
     return encoder, decoder, loss_optimizer, train_func
 
 
-def train(train_set, langs, embedding_size=600, learning_rate=0.01,
+def train(train_set, langs, oov_dict, embedding_size=600, learning_rate=0.01,
           iter_time=10, batch_size=32, get_loss=GET_LOSS, save_model=SAVE_MODEL,
           encoder_style=ENCODER_STYLE, decoder_style=DECODER_STYLE,
           use_model=USE_MODEL):
@@ -421,7 +401,7 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
     criterion = nn.NLLLoss()
 
     # Build up the model
-    model = Seq2Seq(encoder, decoder, train_func, None, criterion, embedding_size, langs)
+    model = Seq2Seq(encoder, decoder, train_func, None, criterion, embedding_size, langs, oov_dict)
 
     # print(encoder)
     # print(decoder)
@@ -438,15 +418,17 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
         for dt in train_iter:
             iteration += 1
             data, idx_data = get_batch(dt)
-            rt, re, rm, summary = idx_data
+            rt, re, rm, orm, summary, osummary = idx_data
+            print(summary)
+            print(osummary)
 
             # Debugging: check the input triplets
             # show_triplets(data[0][0])
-
             # Add paddings
             rt = addpaddings(rt)
             re = addpaddings(re)
             rm = addpaddings(rm)
+            orm = addpaddings(orm)
 
 
             # For summary paddings, if the model is herarchical then pad between sentences
@@ -458,23 +440,23 @@ def train(train_set, langs, embedding_size=600, learning_rate=0.01,
             rt = Variable(torch.LongTensor(rt), requires_grad=False)
             re = Variable(torch.LongTensor(re), requires_grad=False)
             rm = Variable(torch.LongTensor(rm), requires_grad=False)
+            orm = Variable(torch.LongTensor(orm), requires_grad=False)
             
             # DEBUG:
             if torch.sum(rm==3).item() == 0:
-                print('skip')
                 continue
 
             # For Decoding
             summary = Variable(torch.LongTensor(summary), requires_grad=False)
 
             if use_cuda:
-                rt, re, rm, summary = rt.cuda(), re.cuda(), rm.cuda(), summary.cuda()
+                rt, re, rm, orm, summary = rt.cuda(), re.cuda(), rm.cuda(), orm.cuda(), summary.cuda()
 
             # Zero the gradient
             loss_optimizer.zero_grad()
             model.train()
             # calculate loss of "a batch of input sequence"
-            loss = sequenceloss(rt, re, rm, summary, model)
+            loss = sequenceloss(rt, re, rm, orm, summary, model)
 
             # Backpropagation
             loss.backward()
@@ -532,8 +514,8 @@ def main():
     train_data, train_lang = loaddata(file_loc, 'train')
     if MAX_TRAIN_NUM is not None:
         train_data = train_data[:MAX_TRAIN_NUM]
-    train_data = data2index(train_data, train_lang)
-    encoder, decoder = train(train_data, train_lang,
+    train_data, oov_dict = data2index(train_data, train_lang)
+    encoder, decoder = train(train_data, train_lang, oov_dict,
                              embedding_size=embedding_size, learning_rate=learning_rate,
                              iter_time=train_iter_time, batch_size=batch_size, use_model=USE_MODEL)
 
