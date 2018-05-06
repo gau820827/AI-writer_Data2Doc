@@ -478,10 +478,9 @@ def train(train_set, langs, embedding_size=EMBEDDING_SIZE, learning_rate=LR,
             # Get the average loss on the sentences
             target_length = summary.size()[1]
             if float(torch.__version__[:3]) > 0.3:
-                total_loss += loss.item()
+                total_loss += loss.item() / target_length
             else:
-                total_loss += loss.data[0]
-            total_loss /= target_length
+                total_loss += loss.data[0] / target_length
 
             # Print the information and save model
             if iteration % get_loss == 0:
