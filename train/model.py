@@ -369,8 +369,10 @@ class GlobalAttnDecoderRNN(nn.Module):
         self.gru = nn.GRU(hidden_size * 2, hidden_size, n_layers, dropout=dropout_p)
 
     def forward(self, input, hidden, encoder_outputs):
-
+        # print(list(self.attn.parameters()))
         attn_weights = self.attn(hidden[-1, :, :], encoder_outputs)
+        # print(hidden[-1, :, :])
+        print(attn_weights)
         context = torch.bmm(attn_weights, encoder_outputs)
         output = torch.cat((input, context.squeeze(1)), dim=1)
 
@@ -491,9 +493,13 @@ class Attn(nn.Module):
 
         # Get hidden chuncks (batch_size, seq_len, hidden_size)
         hidden = hidden.unsqueeze(1)  # (batch_size, 1, hidden_size)
+        # print(hidden)
         hiddens = hidden.repeat(1, seq_len, 1)
+        # print(hiddens, encoder_outputs)
         attn_energies = self.score(hiddens, encoder_outputs)
-
+        print(attn_energies)
+        print(F.softmax(attn_energies, dim=1))
+        exit(1)
         # # Calculate energies for each encoder output
         # for i in range(seq_len):
         #     attn_energies[:, i] = self.score(hidden, encoder_outputs[:, i])

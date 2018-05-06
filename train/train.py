@@ -363,7 +363,7 @@ def model_initialization(encoder_style, decoder_style, langs, embedding_size, le
     elif encoder_style == 'BiLSTM':
         encoder = EncoderBiLSTM(embedding_size, emb)
     elif encoder_style == 'BiLSTMMax':
-        encoder = EncoderBiLSTMMaxPooling(embedding_size, emb)
+        encoder = EncoderBiLSTMMaxPool(embedding_size, emb)
     elif encoder_style == 'HierarchicalBiLSTM':
         encoder_args = {"hidden_size": embedding_size, "local_embed": emb}
         encoder = HierarchicalBiLSTM(**encoder_args)

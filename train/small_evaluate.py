@@ -80,12 +80,20 @@ def hierarchical_predictwords(rt, re, rm, encoder, decoder, embedding_size, lang
     blocks_len = blocks_lens[0]
 
     # decoder starts
-    gnh = global_decoder.initHidden(batch_length)
-    lnh = local_decoder.initHidden(batch_length)
+    # gnh = global_decoder.initHidden(batch_length)
+    # lnh = local_decoder.initHidden(batch_length)
 
-    g_input = global_encoder_outputs[:, -1]
-    l_input = Variable(torch.LongTensor(batch_length).zero_(), requires_grad=False)
-    l_input = l_input.cuda() if use_cuda else l_input
+    # g_input = global_encoder_outputs[:, -1]
+    # print(g_input.size())
+
+    # l_input = Variable(torch.LongTensor(batch_length).zero_(), requires_grad=False)
+    # l_input = l_input.cuda() if use_cuda else l_input
+
+    g_input = global_decoder.initHidden(batch_length).permute(1, 2, 0)[:, :, -1]
+    print(g_input.size())
+    gnh = global_hidden
+    print(gnh.size())
+    lnh = local_decoder.initHidden(batch_length)
 
     # Reshape the local_encoder outputs to (batch * blocks, blk_size, hidden)
     local_encoder_outputs = local_encoder_outputs.contiguous().view(batch_length * len(blocks_len),
@@ -95,7 +103,7 @@ def hierarchical_predictwords(rt, re, rm, encoder, decoder, embedding_size, lang
     decoder_attentions = torch.zeros(target_length, input_length)
 
     # Initialize the Beam
-    # Each Beam cell contains [prob, route,gnh, lnh, g_input, g_attn_weight, atten]
+    # Each Beam cell contains [prob, route, gnh, lnh, g_input, g_attn_weight, atten]
     beams = [[0, [SOS_TOKEN], gnh, lnh, g_input, None, decoder_attentions]]
 
     # For each step
@@ -115,22 +123,23 @@ def hierarchical_predictwords(rt, re, rm, encoder, decoder, embedding_size, lang
             if decoder_input == EOS_TOKEN:
                 q.push(beam, prob)
                 continue
-            
+
             if di == 0 or decoder_input == BLK_TOKEN:
                 g_output, gnh, g_context, g_attn_weights = global_decoder(
                     g_input, gnh, global_encoder_outputs)
+                lnh = gnh
 
             l_input = Variable(torch.LongTensor([decoder_input]), requires_grad=False)
             l_input = l_input.cuda() if use_cuda else l_input
 
             l_output, lnh, l_context, l_attn_weights, pgen = local_decoder(
                 l_input, lnh, g_attn_weights, local_encoder_outputs, blocks_len)
-            
+
             l_attn_weights = l_attn_weights.squeeze(1)
             bg_attn_weights = g_attn_weights.view(batch_length * len(blocks_len), -1)
-            # print(l_attn_weights)
-            # print(g_attn_weights)
-            # print(bg_attn_weights)
+            # print(l_attn_weights.size())
+            # print(g_attn_weights.size())
+            # print(bg_attn_weights.size())
             combine_attn_weights = l_attn_weights * bg_attn_weights
             combine_attn_weights = combine_attn_weights.view(batch_length, -1)
             # print(torch.sum(combine_attn_weights))
@@ -235,7 +244,7 @@ def predictwords(rt, re, rm, encoder, decoder, embedding_size, langs, beam_size)
                 prob_copy = prob_copy.scatter_add(1, rm, decoder_attention)
 
                 decoder_output_new = (decoder_output.exp() + (1-pgen)*prob_copy).log()
-                decoder_attention = decoder_attention.unsqueeze(1)                
+                decoder_attention = decoder_attention.unsqueeze(1)
             else:
                 decoder_output_new = decoder_output
 
@@ -379,7 +388,7 @@ def main():
     valid_data = data2index(valid_data, train_lang)
     text_generator = evaluate(valid_data, train_lang, embedding_size,
                               encoder_style, decoder_style,
-                              use_model, beam_size=15, verbose=True)
+                              use_model, beam_size=1, verbose=True)
 
     # Generate Text
     start = time.time()

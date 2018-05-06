@@ -4,13 +4,13 @@ file_loc = '../boxscore-data/rotowire/'
 use_cuda = torch.cuda.is_available()
 
 MAX_LENGTH = 800
-LAYER_DEPTH = 4
+LAYER_DEPTH = 2
 MAX_SENTENCES = None
 MAX_TRAIN_NUM = None
 
 Model_name = None
-Model_name = 'pl'
-iterNum = 8495
+Model_name = 'pre_5s_copy_rnn'
+iterNum = 33980
 USE_MODEL = None
 if Model_name is not None:
     USE_MODEL = ['./models/'+Model_name + '_' + s + '_' + str(iterNum) for s in ['encoder', 'decoder', 'optim']]
@@ -34,13 +34,13 @@ SAVE_MODEL = 1
 # Choose models
 
 # ENCODER_STYLE = 'LIN'
-ENCODER_STYLE = 'BiLSTMMax'
-#ENCODER_STYLE = 'RNN'
-DECODER_STYLE = 'RNN'
+# ENCODER_STYLE = 'BiLSTMMax'
+# ENCODER_STYLE = 'RNN'
+# DECODER_STYLE = 'RNN'
 
 # ENCODER_STYLE = 'HierarchicalBiLSTM'
-#ENCODER_STYLE = 'HierarchicalRNN'
-#DECODER_STYLE = 'HierarchicalRNN'
+ENCODER_STYLE = 'HierarchicalRNN'
+DECODER_STYLE = 'HierarchicalRNN'
 OUTPUT_FILE = 'copy'
 COPY_PLAYER = True
 TOCOPY = True
