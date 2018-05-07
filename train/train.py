@@ -139,15 +139,22 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
     # Currently, we pad all box-scores to be the same length and blocks
     blocks_len = blocks_lens[0]
 
-    # decoder starts
-    gnh = global_decoder.initHidden(batch_length)
-    lnh = local_decoder.initHidden(batch_length)
+    # Initialize the inputs for global decoder and local decoder
+    """
+    g_input_{0} should be 0 vector with dim (batch, hidden)
+    gnh should be the last hidden state of global encoder
+    """
+    g_input = global_decoder.initHidden(batch_length).permute(1, 2, 0)[:, :, -1]
+    gnh = global_hidden
 
-    g_input = global_encoder_outputs[:, -1]
+    # l_input_{0} should also be 0 vector with dim (batch) -> 0 as <SOS>
     l_input = Variable(torch.LongTensor(batch_length).zero_(), requires_grad=False)
     l_input = l_input.cuda() if use_cuda else l_input
 
-    # Debugging check the dimension
+    # This is redundant, we will replace this after time stamp 0 anyway
+    lnh = local_decoder.initHidden(batch_length)
+
+    # Debugging: check the dimension
     # print('hl size: {}'.format(local_encoder_outputs.size()))
     # print('gl size: {}'.format(global_encoder_outputs.size()))
     # print('global out size: {}'.format(global_out.size()))
@@ -457,6 +464,7 @@ def train(train_set, langs, embedding_size=EMBEDDING_SIZE, learning_rate=LR,
             # Zero the gradient
             loss_optimizer.zero_grad()
             model.train()
+
             # calculate loss of "a batch of input sequence"
             loss = sequenceloss(rt, re, rm, summary, model)
 
@@ -470,9 +478,9 @@ def train(train_set, langs, embedding_size=EMBEDDING_SIZE, learning_rate=LR,
             # Get the average loss on the sentences
             target_length = summary.size()[1]
             if float(torch.__version__[:3]) > 0.3:
-                total_loss += loss.item()
+                total_loss += loss.item() / target_length
             else:
-                total_loss += loss.data[0]
+                total_loss += loss.data[0] / target_length
 
             # Print the information and save model
             if iteration % get_loss == 0:
