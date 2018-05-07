@@ -16,7 +16,7 @@ from model import AttnDecoderRNN, HierarchicalDecoder
 from util import gettime, load_model, show_triplets
 
 from settings import file_loc, use_cuda
-from settings import EMBEDDING_SIZE, LR, EPOCH_TIME, BATCH_SIZE, GRAD_CLIP
+from settings import EMBEDDING_SIZE, LR, EPOCH_TIME, BATCH_SIZE, GRAD_CLIP, USE_MODEL
 from settings import MAX_SENTENCES, ENCODER_STYLE, DECODER_STYLE, TOCOPY
 from settings import GET_LOSS, SAVE_MODEL, OUTPUT_FILE, COPY_PLAYER, MAX_LENGTH
 from settings import LAYER_DEPTH, PRETRAIN, MAX_TRAIN_NUM, iterNum
@@ -335,7 +335,10 @@ def addpaddings(tokens, toZero=False):
             tokens[i] += [PAD_TOKEN for i in range(max_length - len(tokens[i]))]
     return tokens
 
-def model_initialization(encoder_style, decoder_style, langs, embedding_size, learning_rate, use_model):
+def model_initialization(encoder_style, 
+decoder_style, langs, 
+embedding_size, 
+learning_rate, pretrain, layer_depth, to_copy):
     # Initialize the model
     emb = docEmbedding(langs['rt'].n_words, langs['re'].n_words,
                        langs['rm'].n_words, embedding_size)
@@ -411,7 +414,7 @@ def train(train_set, langs, oov_dict, embedding_size=EMBEDDING_SIZE, learning_ra
           to_copy=TOCOPY, epoch_time=EPOCH_TIME, layer_depth=LAYER_DEPTH,
           max_length=MAX_LENGTH, max_sentence=MAX_SENTENCES,
           save_model=SAVE_MODEL, output_file=OUTPUT_FILE,
-          iter_num=iterNum, pretrain=PRETRAIN):
+          iter_num=iterNum, pretrain=PRETRAIN, use_model=USE_MODEL):
     """The training procedure."""
     # # Test arg parser (For Debugging)
     # print("embedding_size={}, learning_rate={}, batch_size={}, get_loss={}, grad_clip={},\
@@ -426,7 +429,7 @@ def train(train_set, langs, oov_dict, embedding_size=EMBEDDING_SIZE, learning_ra
 
     encoder, decoder, loss_optimizer, train_func = model_initialization(encoder_style, 
                                             decoder_style, langs, 
-                                            embedding_size, learning_rate, use_model)
+                                            embedding_size, learning_rate, pretrain, layer_depth=layer_depth, to_copy=to_copy)
 
     criterion = nn.NLLLoss()
 
@@ -575,15 +578,15 @@ def main(args):
     # valid_data = data2index(valid_data, train_lang)
     # evaluate(encoder, decoder, valid_data, train_lang['summary'], embedding_size)
 
-    encoder, decoder = train(train_data, train_lang, **parameters)
+    encoder, decoder = train(train_data, train_lang, oov_dict, **parameters)
 
     # For evaluation
-    valid_data, _ = loaddata(file_loc, 'valid',
-                             copy_player=copy_player)
+    # valid_data, _ = loaddata(file_loc, 'valid',
+    #                         copy_player=copy_player)
 
-    valid_data = data2index(valid_data, train_lang)
-    evaluate(encoder, decoder, valid_data, train_lang['summary'],
-             parameters['embedding_size'])
+    # valid_data = data2index(valid_data, train_lang)
+    # evaluate(encoder, decoder, valid_data, train_lang['summary'],
+    #         parameters['embedding_size'])
 
 
 def parse_argument():
