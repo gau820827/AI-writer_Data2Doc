@@ -10,7 +10,7 @@ from preprocessing import data_iter
 from dataprepare import loaddata, data2index
 from model import docEmbedding, Seq2Seq
 from model import EncoderLIN, EncoderBiLSTM, EncoderBiLSTMMaxPool
-from model import HierarchicalEncoderRNN, HierarchicalBiLSTM
+from model import HierarchicalRNN, HierarchicalBiLSTM
 from model import AttnDecoderRNN, HierarchicalDecoder
 from util import gettime, load_model, show_triplets
 
@@ -378,7 +378,7 @@ def model_initialization(encoder_style, decoder_style, langs, embedding_size, le
     else:
         # initialize hierarchical encoder rnn, (both global and local)
         encoder_args = {"hidden_size": embedding_size, "local_embed": emb}
-        encoder = HierarchicalEncoderRNN(**encoder_args)
+        encoder = HierarchicalRNN(**encoder_args)
 
     # Choose decoder style and training function
     if decoder_style == 'HierarchicalRNN':

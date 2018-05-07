@@ -14,7 +14,7 @@ from train import get_batch, model_initialization, addpaddings, find_max_block_n
 
 from model import docEmbedding, Seq2Seq
 from model import EncoderLIN, EncoderBiLSTM, EncoderBiLSTMMaxPool
-from model import HierarchicalEncoderRNN, HierarchicalBiLSTM, HierarchicalLIN
+from model import HierarchicalRNN, HierarchicalBiLSTM, HierarchicalLIN
 from model import AttnDecoderRNN, HierarchicalDecoder
 from util import PriorityQueue, gettime
 
