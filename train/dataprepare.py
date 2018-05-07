@@ -45,8 +45,15 @@ class Lang:
             self.word2count[word] += 1
         if self.word2count[word] >= self.threshold and word not in self.word2index:
             self.word2index[word] = self.n_words
-            self.n_words += 1
             self.index2word[self.n_words] = word
+            self.n_words += 1
+            
+    
+    def toindex(self, key):
+        return self.word2index[key]
+    
+    def toword(self, key):
+        return self.index2word[key]
 
 def readLang(data_set):
     """The function to wrap up a data_set.
@@ -62,10 +69,10 @@ def readLang(data_set):
         4 Langs for (r.t, r.e, r.m, 'summary')
         (ex. AST, 'Al Hortford', 10, 'summary')
     """
-    rt = Lang('rt')
-    re = Lang('re')
-    rm = Lang('rm')
-    summarize = Lang('summarize')
+    rt = Lang('rt', threshold=1)
+    re = Lang('re', threshold=1)
+    rm = Lang('rm', threshold=1)
+    summarize = Lang('summarize', threshold=100)
 
     for v in data_set:
         for triplet in v.triplets:
@@ -75,7 +82,7 @@ def readLang(data_set):
             rt.addword(triplet[0])
             re.addword(triplet[1])
             rm.addword(triplet[2])
-            summarize.addword(triplet[2])
+            #summarize.addword(triplet[2])
     for v in data_set:
         for word in v.summary:
             # summary
@@ -135,14 +142,17 @@ def data2index(data_set, langs, max_sentences=MAX_SENTENCES):
             return lang.word2index['<UNK>']
 
     # Extend the dataset with indexing
-    oov_dict = {'<KWN>':0}
-    oov_ctr = len(oov_dict)
+    # TODO: change to class Lang
+    oov_dict = Lang("oov_dict", threshold=1)
+    oov_dict.addword("<KWN>")
     for i in range(len(data_set)):
         for triplet in data_set[i].triplets:
             # construct oov dictionary
-            if triplet[2] not in oov_dict:
-                oov_dict[triplet[2]] = oov_ctr
-                oov_ctr +=1
+            oov_dict.addword(triplet[2])
+        for w in data_set[i].summary:
+            # construct oov dictionary
+            oov_dict.addword(w)
+
     for i in range(len(data_set)):
         idx_triplets = []
         for triplet in data_set[i].triplets:
@@ -151,9 +161,9 @@ def data2index(data_set, langs, max_sentences=MAX_SENTENCES):
             idx_triplet[1] = findword2index(langs['re'], triplet[1])
             idx_triplet[2] = findword2index(langs['rm'], triplet[2])
             if idx_triplet[2] == langs['rm'].word2index['<UNK>']:
-                idx_triplet[3] = oov_dict[triplet[2]]
+                idx_triplet[3] = oov_dict.word2index[triplet[2]]
             else:
-                idx_triplet[3] = oov_dict['<KWN>']
+                idx_triplet[3] = oov_dict.word2index['<KWN>']
             idx_triplets.append(tuple(idx_triplet))
 
         # Indexing the summaries
@@ -163,12 +173,12 @@ def data2index(data_set, langs, max_sentences=MAX_SENTENCES):
         for word in data_set[i].summary:
             idx = findword2index(langs['summary'], word)
             if idx == langs['summary'].word2index['<UNK>']:
-                if word in oov_dict:
-                    idx_osummary.append(oov_dict[word])
+                if word in oov_dict.word2index:
+                    idx_osummary.append(oov_dict.word2index[word])
                 else:
-                    idx_osummary.append(oov_dict['<KWN>'])
+                    idx_osummary.append(oov_dict.word2index['<KWN>'])
             else:
-                idx_osummary.append(oov_dict['<KWN>'])
+                idx_osummary.append(oov_dict.word2index['<KWN>'])
             
             idx_summary.append(idx)
 

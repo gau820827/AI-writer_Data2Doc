@@ -38,26 +38,24 @@ def get_batch(batch):
 
     Returns:
         batch_data: The origin processed data
-                    (i.e batch_size * (triples, summary, osummary))
+                    (i.e batch_size * (triples[rt, re, rm, orm], summary, osummary))
         batch_idx_data: The indexing-processed data
                         (e.g batch_size * (r.t, r.e, r.m, summary, osummary))
 
     """
     batch_data = []
-    batch_idx_data = [[], [], [], [], []]
+    batch_idx_data = [[], [], [], [], [], []]
     for d in batch:
-        idx_data = [[], [], []]  # for each triplet
+        idx_data = [[], [], [], []]  # for each triplet
         batch_data.append([d.triplets, d.summary])  # keep the original data/ not indexed version
         for triplets in d.idx_data[0]:
-            print(triplets)
             for idt, t in enumerate(triplets):
                 idx_data[idt].append(t)
 
         for idb, b in enumerate(idx_data):
             batch_idx_data[idb].append(b)
-        print(d.idx_data)
-        batch_idx_data[3].append(d.idx_data[1])
-        batch_idx_data[4].append(d.idx_data[2])
+        batch_idx_data[4].append(d.idx_data[1])
+        batch_idx_data[5].append(d.idx_data[2])
 
     return batch_data, batch_idx_data
 
@@ -452,8 +450,20 @@ def train(train_set, langs, oov_dict, embedding_size=EMBEDDING_SIZE, learning_ra
             iteration += 1
             data, idx_data = get_batch(dt)
             rt, re, rm, orm, summary, osummary = idx_data
-            print(summary)
-            print(osummary)
+            # print(summary[0])
+            # print(osummary[0])
+            # print(len(summary[0]))
+            # print(len(osummary[0]))
+
+            # for i,idx in enumerate(summary[0]):
+            #     if idx != 3:
+            #         print('{}'.format(langs['summary'].index2word[idx]), end=' ')
+            #     else:
+            #         print('{}'.format(oov_dict.index2word[osummary[0][i]]), end=' ')
+                    
+            # print(data[0][1])
+
+            # exit(1)
 
             # Debugging: check the input triplets
             # show_triplets(data[0][0])
