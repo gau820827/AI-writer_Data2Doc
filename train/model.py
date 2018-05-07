@@ -181,6 +181,7 @@ class EncoderRNN(nn.Module):
             batch_size = embedded.size(0)
             embed_dim = embedded.size(2)
             outputs = Variable(torch.zeros(seq_len, batch_size, embed_dim))
+            outputs = outputs.cuda() if use_cuda else outputs
 
             for ei in range(seq_len):
                 if ei > 0 and ei % 32 == 0:
@@ -229,6 +230,7 @@ class EncoderBiLSTM(nn.Module):
             batch_size = embedded.size(0)
             embed_dim = embedded.size(2)
             outputs = Variable(torch.zeros(seq_len, batch_size, embed_dim))
+            outputs = outputs.cuda() if use_cuda else outputs
 
             for ei in range(seq_len):
                 if ei > 0 and ei % 32 == 0:
@@ -284,6 +286,7 @@ class EncoderBiLSTMMaxPool(nn.Module):
             batch_size = embedded.size(0)
             embed_dim = embedded.size(2)
             bilstm_outs = Variable(torch.zeros(seq_len, batch_size, embed_dim))
+            bilstm_outs = bilstm_outs.cuda() if use_cuda else bilstm_outs
 
             for ei in range(seq_len):
                 if ei > 0 and ei % 32 == 0:
