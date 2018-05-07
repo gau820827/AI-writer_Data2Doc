@@ -7,6 +7,7 @@ import torch.nn.functional as F
 
 from settings import use_cuda, MAX_LENGTH, LAYER_DEPTH, TOCOPY
 
+import time
 
 class Seq2Seq(object):
     def __init__(self, encoder, decoder, train_func, decode_func, criterion, embedding_size, langs):
@@ -165,6 +166,17 @@ class EncoderRNN(nn.Module):
             # local encoder: input is (rt, re, rm)
             embedded = self.embedding(inputs['rt'], inputs['re'], inputs['rm'])
             inp = embedded.permute(1, 0, 2)
+
+            outputs = Variable(torch.zeros(embedded.size(1), embedded.size(0), embedded.size(2)))
+            for ei in range(embedded.size(1)):
+                input = inp[ei, :, :].unsqueeze(0)
+                output, hidden = self.gru(input, hidden)
+                outputs[ei, :, :] = output[0, :, :]
+                if ei % 32 == 0:
+                    hidden = self.initHidden(embedded.size(0))
+
+            return outputs, hidden
+
         else:
             # global encoder: input is local_hidden_states
             inp = inputs['local_hidden_states']
@@ -372,7 +384,7 @@ class GlobalAttnDecoderRNN(nn.Module):
         # print(list(self.attn.parameters()))
         attn_weights = self.attn(hidden[-1, :, :], encoder_outputs)
         # print(hidden[-1, :, :])
-        print(attn_weights)
+        # print(attn_weights)
         context = torch.bmm(attn_weights, encoder_outputs)
         output = torch.cat((input, context.squeeze(1)), dim=1)
 
@@ -497,9 +509,14 @@ class Attn(nn.Module):
         hiddens = hidden.repeat(1, seq_len, 1)
         # print(hiddens, encoder_outputs)
         attn_energies = self.score(hiddens, encoder_outputs)
-        print(attn_energies)
-        print(F.softmax(attn_energies, dim=1))
-        exit(1)
+        # print('attn_energies: {}'.format(attn_energies))
+        # print('softmax_attn_energies: {}'.format(F.softmax(attn_energies, dim=1)))
+
+        # print(-1 * torch.log(-1 * attn_energies))
+        # print(F.softmax(-1 * torch.log(-1 * attn_energies), dim=1))
+        # time.sleep(1)
+        # exit(1)
+
         # # Calculate energies for each encoder output
         # for i in range(seq_len):
         #     attn_energies[:, i] = self.score(hidden, encoder_outputs[:, i])
@@ -512,6 +529,8 @@ class Attn(nn.Module):
         # print('size of hidden: {}'.format(hidden.size()))
         # print('size of encoder_hidden: {}'.format(encoder_output.size()))
         energy = self.attn(encoder_outputs)
+        # print(energy[0, 0].data)
+        # print(hidden[0, 0].data)
 
         # batch-wise calculate dot-product
         hidden = hidden.unsqueeze(2)  # (batch, seq, 1, d)

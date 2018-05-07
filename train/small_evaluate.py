@@ -128,12 +128,15 @@ def hierarchical_predictwords(rt, re, rm, encoder, decoder, embedding_size, lang
                 g_output, gnh, g_context, g_attn_weights = global_decoder(
                     g_input, gnh, global_encoder_outputs)
                 lnh = gnh
+                print(g_attn_weights)
 
             l_input = Variable(torch.LongTensor([decoder_input]), requires_grad=False)
             l_input = l_input.cuda() if use_cuda else l_input
 
             l_output, lnh, l_context, l_attn_weights, pgen = local_decoder(
                 l_input, lnh, g_attn_weights, local_encoder_outputs, blocks_len)
+
+            # print(g_attn_weights)
 
             l_attn_weights = l_attn_weights.squeeze(1)
             bg_attn_weights = g_attn_weights.view(batch_length * len(blocks_len), -1)
