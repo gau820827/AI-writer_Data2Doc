@@ -118,8 +118,7 @@ class EncoderLIN(nn.Module):
             for ei in range(seq_len):
                 if ei > 0 and ei % 32 == 0:
                     output = self.initHidden(batch_size)
-                print("at ei = {}".format(ei))
-                print("output = ", hiddens)
+
                 output = torch.cat((inp[:, ei, :], output), dim=1)
                 output = self.avgpool(output.unsqueeze(1))
                 output = output.squeeze(1)
@@ -238,14 +237,7 @@ class EncoderBiLSTM(nn.Module):
                 # inputs of size: (1, batch, emb_dim)
                 output, hidden = self.bilstm(seq_i, hidden)
                 # output of size: (1, batch, emb_dim)
-                # if ei % 32 == 0:
-                #     print("reinit ei = ", ei)
-                #     print(outputs[ei, :, :])
-                #     print(output[0, :, :])
                 outputs[ei, :, :] = output[0, :, :]
-                # if ei % 8 == 0:
-                #     print("at ei = ", ei)
-                #     print(outputs[ei, :, :])
 
         else:
             inp = inputs['local_hidden_states']
@@ -302,8 +294,6 @@ class EncoderBiLSTMMaxPool(nn.Module):
                 outputs, hidden = self.bilstm(inputs, hidden)
                 # output of size: (1, batch, emb_dim)
                 bilstm_outs[ei, :, :] = outputs[0, :, :]
-                if ei % 8 == 0:
-                    print(bilstm_outs[ei, :, :])
 
         else:
             inp = inputs['local_hidden_states']
