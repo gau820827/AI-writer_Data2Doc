@@ -74,13 +74,18 @@ def initGlobalEncoderInput(MAX_BLOCK, batch_length, input_length, embedding_size
     """
     Args: local_outputs: (batch, seq_len, embed_size)
     """
+    # print("Max block = ", MAX_BLOCK)
+    # print("input length = ", input_length)
     global_input = Variable(torch.zeros(MAX_BLOCK, batch_length,
                                         embedding_size))
     global_input = global_input.cuda() if use_cuda else global_input
-    for ei in range(input_length):
+    for ei in range(1, input_length + 1):
+        # In this way, the first global state is the 32 of local state
         if ei % BLOCK_JUMPS == 0:
             block_idx = int(ei / (BLOCK_JUMPS + 1))
-            global_input[block_idx, :, :] = local_outputs[ei, :, :]
+            global_input[block_idx, :, :] = local_outputs[ei - 1, :, :]
+            # print("ei = {}, local {} put in block number = {}"
+            #       .format(ei, ei - 1, block_idx))
     return global_input
 
 
