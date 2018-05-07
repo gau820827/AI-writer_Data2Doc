@@ -86,17 +86,17 @@ def initGlobalEncoderInput(MAX_BLOCK, batch_length, input_length, embedding_size
     return global_input
 
 
-def sequenceloss(rt, re, rm, orm, summary, model):
+def sequenceloss(rt, re, rm, orm, summary, osummary, model):
     """Function for train on sentences.
 
     This function will calculate the gradient and NLLloss on sentences,
     and then return the loss.
 
     """
-    return model.seq_train(rt, re, rm, orm, summary)
+    return model.seq_train(rt, re, rm, orm, summary, osummary)
 
 
-def Hierarchical_seq_train(rt, re, rm, orm, summary, encoder, decoder,
+def Hierarchical_seq_train(rt, re, rm, orm, summary, osummary, encoder, decoder,
                            criterion, embedding_size, langs, oov_dict):
     batch_length = rt.size()[0]
     input_length = rt.size()[1]
@@ -203,7 +203,7 @@ def Hierarchical_seq_train(rt, re, rm, orm, summary, encoder, decoder,
     return loss
 
 
-def Plain_seq_train(rt, re, rm, orm, summary, encoder, decoder,
+def Plain_seq_train(rt, re, rm, orm, summary, osummary, encoder, decoder,
                     criterion, embedding_size, langs, oov_dict):
     batch_length = rt.size()[0]
     input_length = rt.size()[1]
@@ -264,7 +264,7 @@ def Plain_seq_train(rt, re, rm, orm, summary, encoder, decoder,
     return loss
 
 
-def add_sentence_paddings(summarizes):
+def add_sentence_paddings(summarizes, osummarizes):
     """A helper function to add paddings to sentences.
     Args:
         summary: A list (batch_size) of indexing summarizes.
@@ -280,21 +280,24 @@ def add_sentence_paddings(summarizes):
     max_blocks_length = max(list(map(len_block, summarizes)))
 
     for i in range(len(summarizes)):
+        osummarizes[i] += [BLK_TOKEN for j in range(max_blocks_length - len_block(summarizes[i]))]        
         summarizes[i] += [BLK_TOKEN for j in range(max_blocks_length - len_block(summarizes[i]))]
 
     # Aligns with blocks, and remove <BLK> at this time
-    def to_matrix(summary):
+    def to_matrix(summary, osummary):
         mat = [[] for i in range(len_block(summary) + 1)]
+        omat = [[] for i in range(len_block(summary) + 1)]
         idt = 0
-        for word in summary:
+        for i,word in enumerate(summary):
             if word == BLK_TOKEN:
                 idt += 1
             else:
                 mat[idt].append(word)
-        return mat
+                omat[idt].append(osummary[i])
+        return mat, omat 
 
     for i in range(len(summarizes)):
-        summarizes[i] = to_matrix(summarizes[i])
+        summarizes[i], osummarizes[i] = to_matrix(summarizes[i], osummarizes[i])
 
     # Add sentence paddings
     def len_sentence(matrix):
@@ -303,6 +306,9 @@ def add_sentence_paddings(summarizes):
     max_sentence_length = max([len_sentence(s) for s in summarizes])
     for i in range(len(summarizes)):
         for j in range(len(summarizes[i])):
+            osummarizes[i][j] += [PAD_TOKEN for k in range(max_sentence_length - len(summarizes[i][j]))]
+            osummarizes[i][j] += [BLK_TOKEN]
+            
             summarizes[i][j] += [PAD_TOKEN for k in range(max_sentence_length - len(summarizes[i][j]))]
             summarizes[i][j] += [BLK_TOKEN]
 
@@ -312,8 +318,9 @@ def add_sentence_paddings(summarizes):
 
     for i in range(len(summarizes)):
         summarizes[i] = to_list(summarizes[i])
+        osummarizes[i] = to_list(osummarizes[i])
 
-    return summarizes
+    return summarizes, osummarizes
 
 
 def addpaddings(tokens, toZero=False):
@@ -477,9 +484,10 @@ def train(train_set, langs, oov_dict, embedding_size=EMBEDDING_SIZE, learning_ra
             # For summary paddings, if the model is herarchical then pad between sentences
             # If the batch_size is 1 then we don't need to do sentence padding
             if decoder_style == 'HierarchicalRNN' and batch_size != 1:
-                summary = add_sentence_paddings(summary)
+                summary, osummary = add_sentence_paddings(summary, osummary)
             else:
                 summary = addpaddings(summary)
+                osummary = addpaddings(osummary)
 
             rt = Variable(torch.LongTensor(rt), requires_grad=False)
             re = Variable(torch.LongTensor(re), requires_grad=False)
@@ -487,11 +495,14 @@ def train(train_set, langs, oov_dict, embedding_size=EMBEDDING_SIZE, learning_ra
             orm = Variable(torch.LongTensor(orm), requires_grad=False)
             
             # DEBUG:
-            if torch.sum(rm==3).item() == 0:
-                continue
+            #if torch.sum(rm==3).item() == 0:
+            #    continue
 
             # For Decoding
             summary = Variable(torch.LongTensor(summary), requires_grad=False)
+            osummary = Variable(torch.LongTensor(osummary), requires_grad=False)
+            #print(summary)
+            #print(osummary)
 
             if use_cuda:
                 rt, re, rm, orm, summary = rt.cuda(), re.cuda(), rm.cuda(), orm.cuda(), summary.cuda()
@@ -500,7 +511,7 @@ def train(train_set, langs, oov_dict, embedding_size=EMBEDDING_SIZE, learning_ra
             loss_optimizer.zero_grad()
             model.train()
             # calculate loss of "a batch of input sequence"
-            loss = sequenceloss(rt, re, rm, orm, summary, model)
+            loss = sequenceloss(rt, re, rm, orm, summary, osummary, model)
 
             # Backpropagation
             loss.backward()
