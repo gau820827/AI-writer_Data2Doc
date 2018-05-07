@@ -145,6 +145,7 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
     blocks_len = blocks_lens[0]
 
     # decoder starts
+
     gnh = global_decoder.initHidden(batch_length)
     lnh = local_decoder.initHidden(batch_length)
 
@@ -168,6 +169,10 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
     for di in range(target_length):
         # Feed the global decoder
         if di == 0 or l_input[0].data[0] == BLK_TOKEN:
+            
+            print("batch length = ", batch_length)
+            print("hidden gnh shape = ", gnh.shape)
+
             g_output, gnh, g_context, g_attn_weights = global_decoder(
                 g_input, gnh, global_encoder_outputs)
 
