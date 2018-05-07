@@ -33,9 +33,9 @@ class Seq2Seq(object):
         self.encoder.eval()
         self.decoder.eval()
 
-    def seq_decode(self, rt, re, rm, beam_size):
+    def seq_decode(self, rt, re, rm, orm, beam_size):
         """The function to decode the sentences."""
-        return self.decode_func(rt, re, rm,
+        return self.decode_func(rt, re, rm, orm,
                                 self.encoder, self.decoder,
                                 self.embedding_size, self.langs, self.oov_dict, beam_size)
 

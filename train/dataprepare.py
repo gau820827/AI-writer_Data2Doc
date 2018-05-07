@@ -142,7 +142,6 @@ def data2index(data_set, langs, max_sentences=MAX_SENTENCES):
             return lang.word2index['<UNK>']
 
     # Extend the dataset with indexing
-    # TODO: change to class Lang
     oov_dict = Lang("oov_dict", threshold=1)
     oov_dict.addword("<KWN>")
     for i in range(len(data_set)):
@@ -160,10 +159,7 @@ def data2index(data_set, langs, max_sentences=MAX_SENTENCES):
             idx_triplet[0] = findword2index(langs['rt'], triplet[0])
             idx_triplet[1] = findword2index(langs['re'], triplet[1])
             idx_triplet[2] = findword2index(langs['rm'], triplet[2])
-            if idx_triplet[2] == langs['rm'].word2index['<UNK>']:
-                idx_triplet[3] = oov_dict.word2index[triplet[2]]
-            else:
-                idx_triplet[3] = oov_dict.word2index['<KWN>']
+            idx_triplet[3] = findword2index(langs['summary'], triplet[2])
             idx_triplets.append(tuple(idx_triplet))
 
         # Indexing the summaries

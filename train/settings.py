@@ -5,10 +5,10 @@ use_cuda = torch.cuda.is_available()
 
 MAX_LENGTH = 800
 
-# Model_name = None
+Model_name = None
 # Model_name = 'hi_copy'
-# iterNum = 8495
-# USE_MODEL = None
+USE_MODEL = 'copy'
+iterNum = 640
 if Model_name is not None:
     USE_MODEL = ['./models/'+Model_name + '_' + s + '_' + str(iterNum) for s in ['encoder', 'decoder', 'optim']]
 # USE_MODEL = ['./models/clipped_encoder_25440', './models/clipped_decoder_25440']
@@ -30,13 +30,13 @@ EMBEDDING_SIZE = 600
 LR = 0.01  # Adagrad
 # LR = 0.003  # Adam
 EPOCH_TIME = 220
-BATCH_SIZE = 2
+BATCH_SIZE = 1
 GRAD_CLIP = 5
 LAYER_DEPTH = 2
 
 # Default parameters for display
 GET_LOSS = 1
-SAVE_MODEL = 5
+SAVE_MODEL = 1
 
 # Choose models
 
@@ -45,8 +45,8 @@ SAVE_MODEL = 5
 ENCODER_STYLE = 'BiLSTM'
 DECODER_STYLE = 'RNN'
 
-# ENCODER_STYLE = 'HierarchicalBiLSTM'
-# DECODER_STYLE = 'HierarchicalRNN'
+#ENCODER_STYLE = 'HierarchicalBiLSTM'
+#DECODER_STYLE = 'HierarchicalRNN'
 OUTPUT_FILE = 'copy'
 COPY_PLAYER = True
 TOCOPY = True

@@ -238,24 +238,40 @@ def Plain_seq_train(rt, re, rm, orm, summary, osummary, encoder, decoder,
             decoder_input, decoder_hidden, encoder_outputs)
 
         if decoder.copy:
-            prob = Variable(torch.zeros(decoder_output.shape), requires_grad=False)
+            prob = Variable(torch.zeros(decoder_output.shape))
             prob = prob.cuda() if use_cuda else prob
 
             decoder_attention = decoder_attention.squeeze(1)
-            prob = prob.scatter_add(1, rm, decoder_attention)
+            prob = prob.scatter_add(1, orm, decoder_attention)
             # reset <UNK> prob
-            prob[:,3] = 0
             # calculate oov prob.
-            print()
-            prob_oov = Variable(torch.zeros([batch_length, len(oov_dict)]), requires_grad=False)
-            prob_oov = prob_oov.cuda() if use_cuda else prob_oov
+            # prob[:,3] = 0
+            
 
-            prob_oov = prob_oov.scatter_add(1, orm, decoder_attention)
-            prob_oov = prob_oov.log()
-            prob_oov[:,0] = 0
+            # Count different oov in rm
+            # oovs = {6:0}
+            # oovs_ctr = 1
+            # print(orm)
+            # for b in range(orm.shape[0]):
+            #     for i in range(orm.shape[1]):
+            #         if orm[b,i].item() not in oovs:
+            #             oovs[orm[b,i].item()] = oovs_ctr
+            #             oovs_ctr += 1
+            #         orm[b,i] = oovs[orm[b,i].item()]
+            # print(orm)
+            # prob_oov = Variable(torch.zeros([decoder_attention.shape[0], 1]))
+            # prob_oov = prob_oov.cuda() if use_cuda else prob_oov
+
+            # prob_oov = prob_oov.scatter_add(1, orm, decoder_attention)
+            # prob_oov = prob_oov.log()
+            # prob_oov[:,0] = 0
+
+            # print(prob_oov)
+            
             
             decoder_output_new = (decoder_output.exp() + (1-pgen)*prob).log()
-            loss += criterion((1-pgen).log() + prob_oov, orm)
+            # print(torch.sum(decoder_output_new.exp(), 1))
+            #loss += criterion((1-pgen).log(), orm)
         else:
             decoder_output_new = decoder_output
         loss += criterion(decoder_output_new, summary[:, di])
@@ -280,7 +296,7 @@ def add_sentence_paddings(summarizes, osummarizes):
     max_blocks_length = max(list(map(len_block, summarizes)))
 
     for i in range(len(summarizes)):
-        osummarizes[i] += [BLK_TOKEN for j in range(max_blocks_length - len_block(summarizes[i]))]        
+        osummarizes[i] += [6 for j in range(max_blocks_length - len_block(summarizes[i]))]        
         summarizes[i] += [BLK_TOKEN for j in range(max_blocks_length - len_block(summarizes[i]))]
 
     # Aligns with blocks, and remove <BLK> at this time
@@ -306,8 +322,8 @@ def add_sentence_paddings(summarizes, osummarizes):
     max_sentence_length = max([len_sentence(s) for s in summarizes])
     for i in range(len(summarizes)):
         for j in range(len(summarizes[i])):
-            osummarizes[i][j] += [PAD_TOKEN for k in range(max_sentence_length - len(summarizes[i][j]))]
-            osummarizes[i][j] += [BLK_TOKEN]
+            osummarizes[i][j] += [6 for k in range(max_sentence_length - len(summarizes[i][j]))]
+            osummarizes[i][j] += [6]
             
             summarizes[i][j] += [PAD_TOKEN for k in range(max_sentence_length - len(summarizes[i][j]))]
             summarizes[i][j] += [BLK_TOKEN]
@@ -323,7 +339,7 @@ def add_sentence_paddings(summarizes, osummarizes):
     return summarizes, osummarizes
 
 
-def addpaddings(tokens, toZero=False):
+def addpaddings(tokens, to=None):
     """A helper function to add paddings to tokens.
 
     Args:
@@ -334,8 +350,8 @@ def addpaddings(tokens, toZero=False):
     """
     max_length = len(max(tokens, key=len))
     for i in range(len(tokens)):
-        if toZero:
-            tokens[i] += [0 for i in range(max_length - len(tokens[i]))]
+        if to is not None:
+            tokens[i] += [to for i in range(max_length - len(tokens[i]))]
         else:
             tokens[i] += [PAD_TOKEN for i in range(max_length - len(tokens[i]))]
     return tokens
@@ -343,7 +359,7 @@ def addpaddings(tokens, toZero=False):
 def model_initialization(encoder_style, 
 decoder_style, langs, 
 embedding_size, 
-learning_rate, pretrain, layer_depth, to_copy):
+learning_rate, pretrain, layer_depth, to_copy, iter_num):
     # Initialize the model
     emb = docEmbedding(langs['rt'].n_words, langs['re'].n_words,
                        langs['rm'].n_words, embedding_size)
@@ -434,7 +450,7 @@ def train(train_set, langs, oov_dict, embedding_size=EMBEDDING_SIZE, learning_ra
 
     encoder, decoder, loss_optimizer, train_func = model_initialization(encoder_style, 
                                             decoder_style, langs, 
-                                            embedding_size, learning_rate, pretrain, layer_depth=layer_depth, to_copy=to_copy)
+                                            embedding_size, learning_rate, pretrain, layer_depth=layer_depth, to_copy=to_copy, iter_num=iter_num)
 
     criterion = nn.NLLLoss()
 
@@ -487,7 +503,7 @@ def train(train_set, langs, oov_dict, embedding_size=EMBEDDING_SIZE, learning_ra
                 summary, osummary = add_sentence_paddings(summary, osummary)
             else:
                 summary = addpaddings(summary)
-                osummary = addpaddings(osummary)
+                osummary = addpaddings(osummary, 6)
 
             rt = Variable(torch.LongTensor(rt), requires_grad=False)
             re = Variable(torch.LongTensor(re), requires_grad=False)
@@ -515,7 +531,7 @@ def train(train_set, langs, oov_dict, embedding_size=EMBEDDING_SIZE, learning_ra
 
             # Backpropagation
             loss.backward()
-            torch.nn.utils.clip_grad_norm(list(model.encoder.parameters()) +
+            torch.nn.utils.clip_grad_norm_(list(model.encoder.parameters()) +
                                           list(model.decoder.parameters()),
                                           grad_clip)
             loss_optimizer.step()
@@ -523,9 +539,9 @@ def train(train_set, langs, oov_dict, embedding_size=EMBEDDING_SIZE, learning_ra
             # Get the average loss on the sentences
             target_length = summary.size()[1]
             if float(torch.__version__[:3]) > 0.3:
-                total_loss += loss.item()
+                total_loss += loss.item() / target_length
             else:
-                total_loss += loss.data[0]
+                total_loss += loss.data[0] / target_length
 
             # Print the information and save model
             if iteration % get_loss == 0:
@@ -585,6 +601,10 @@ def main(args):
     print("Start Training")
 
     parameters, copy_player = setupconfig(args)
+
+    if parameters['batch_size'] > 1:
+        print("Currently only support batch_size == 1")
+        exit(1)
 
     # For Training
     train_data, train_lang = loaddata(file_loc, 'train',
