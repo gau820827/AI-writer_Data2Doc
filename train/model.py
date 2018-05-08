@@ -563,12 +563,16 @@ class Attn(nn.Module):
     def score(self, hidden, encoder_outputs):
         # print('size of hidden: {}'.format(hidden.size()))
         # print('size of encoder_hidden: {}'.format(encoder_output.size()))
-        energy = self.attn(encoder_outputs)
+        # energy = self.attn(encoder_outputs)
+        # energy = F.tanh(energy)
+        energy = encoder_outputs
+        # print(encoder_outputs)
+        # print(energy)
 
         # batch-wise calculate dot-product
         hidden = hidden.unsqueeze(2)  # (batch, seq, 1, d)
         energy = energy.unsqueeze(3)  # (batch, seq, d, 1)
-
+        # print(energy)
         energy = torch.matmul(hidden, energy)  # (batch, seq, 1, 1)
 
         # print('size of energies: {}'.format(energy.size()))

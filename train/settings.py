@@ -10,7 +10,7 @@ MAX_TRAIN_NUM = None
 
 Model_name = None
 Model_name = 'copy_rnn'
-iterNum = 16990
+iterNum = 10194
 USE_MODEL = None
 if Model_name is not None:
     USE_MODEL = ['./models/'+Model_name + '_' + s + '_' + str(iterNum) for s in ['encoder', 'decoder', 'optim']]
