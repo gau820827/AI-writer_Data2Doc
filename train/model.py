@@ -19,9 +19,9 @@ class Seq2Seq(object):
         self.langs = langs
         self.oov_dict = oov_dict
 
-    def seq_train(self, rt, re, rm, orm, summary, osummary):
+    def seq_train(self, rt, re, rm, orm, summary, data):
         """The function to calculate the loss on one batch."""
-        return self.train_func(rt, re, rm, orm, summary, osummary,
+        return self.train_func(rt, re, rm, orm, summary, data,
                                self.encoder, self.decoder,
                                self.criterion, self.embedding_size, self.langs, self.oov_dict)
 
@@ -33,9 +33,9 @@ class Seq2Seq(object):
         self.encoder.eval()
         self.decoder.eval()
 
-    def seq_decode(self, rt, re, rm, orm, beam_size):
+    def seq_decode(self, rt, re, rm, orm, data, beam_size):
         """The function to decode the sentences."""
-        return self.decode_func(rt, re, rm, orm,
+        return self.decode_func(rt, re, rm, orm, data,
                                 self.encoder, self.decoder,
                                 self.embedding_size, self.langs, self.oov_dict, beam_size)
 

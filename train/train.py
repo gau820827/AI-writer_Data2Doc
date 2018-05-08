@@ -86,17 +86,17 @@ def initGlobalEncoderInput(MAX_BLOCK, batch_length, input_length, embedding_size
     return global_input
 
 
-def sequenceloss(rt, re, rm, orm, summary, osummary, model):
+def sequenceloss(rt, re, rm, orm, summary, data, model):
     """Function for train on sentences.
 
     This function will calculate the gradient and NLLloss on sentences,
     and then return the loss.
 
     """
-    return model.seq_train(rt, re, rm, orm, summary, osummary)
+    return model.seq_train(rt, re, rm, orm, summary, data)
 
 
-def Hierarchical_seq_train(rt, re, rm, orm, summary, osummary, encoder, decoder,
+def Hierarchical_seq_train(rt, re, rm, orm, summary, data, encoder, decoder,
                            criterion, embedding_size, langs, oov_dict):
     batch_length = rt.size()[0]
     input_length = rt.size()[1]
@@ -203,7 +203,7 @@ def Hierarchical_seq_train(rt, re, rm, orm, summary, osummary, encoder, decoder,
     return loss
 
 
-def Plain_seq_train(rt, re, rm, orm, summary, osummary, encoder, decoder,
+def Plain_seq_train(rt, re, rm, orm, summary, data, encoder, decoder,
                     criterion, embedding_size, langs, oov_dict):
     batch_length = rt.size()[0]
     input_length = rt.size()[1]
@@ -246,8 +246,17 @@ def Plain_seq_train(rt, re, rm, orm, summary, osummary, encoder, decoder,
             # reset <UNK> prob
             # calculate oov prob.
             # prob[:,3] = 0
-            
 
+            # Check <UNK> equality
+            curword = summary[0, di].item()
+            oov_exist = False
+            if curword == 3:
+                prob_oov = Variable(torch.zeros([1,1]))
+                prob_oov = prob_oov.cuda() if use_cuda else prob_oov
+                for i in range(decoder_attention.shape[1]):
+                    if data[0][0][i][2] == data[0][1][di]:
+                        oov_exists = True
+                        prob_oov += decoder_attention[0,i]
             # Count different oov in rm
             # oovs = {6:0}
             # oovs_ctr = 1
@@ -272,9 +281,14 @@ def Plain_seq_train(rt, re, rm, orm, summary, osummary, encoder, decoder,
             decoder_output_new = (decoder_output.exp() + (1-pgen)*prob).log()
             # print(torch.sum(decoder_output_new.exp(), 1))
             #loss += criterion((1-pgen).log(), orm)
+            if oov_exist:
+                loss += -prob_oov.log()
+            else:
+                loss += criterion(decoder_output_new, summary[:, di])            
         else:
             decoder_output_new = decoder_output
-        loss += criterion(decoder_output_new, summary[:, di])
+            loss += criterion(decoder_output_new, summary[:, di])
+        
         decoder_input = summary[:, di]  # Supervised
 
     return loss
@@ -339,7 +353,7 @@ def add_sentence_paddings(summarizes, osummarizes):
     return summarizes, osummarizes
 
 
-def addpaddings(tokens, to=None):
+def addpaddings(tokens, company=None, to=None):
     """A helper function to add paddings to tokens.
 
     Args:
@@ -353,8 +367,14 @@ def addpaddings(tokens, to=None):
         if to is not None:
             tokens[i] += [to for i in range(max_length - len(tokens[i]))]
         else:
+            if company is not None:
+                company[i][1] += [PAD_TOKEN for i in range(max_length - len(tokens[i]))]
+                
             tokens[i] += [PAD_TOKEN for i in range(max_length - len(tokens[i]))]
-    return tokens
+    if company is not None:
+        return tokens, company
+    else:
+        return tokens
 
 def model_initialization(encoder_style, 
 decoder_style, langs, 
@@ -502,8 +522,8 @@ def train(train_set, langs, oov_dict, embedding_size=EMBEDDING_SIZE, learning_ra
             if decoder_style == 'HierarchicalRNN' and batch_size != 1:
                 summary, osummary = add_sentence_paddings(summary, osummary)
             else:
-                summary = addpaddings(summary)
-                osummary = addpaddings(osummary, 6)
+                summary, data = addpaddings(summary, data)
+                #osummary = addpaddings(osummary, to=6)
 
             rt = Variable(torch.LongTensor(rt), requires_grad=False)
             re = Variable(torch.LongTensor(re), requires_grad=False)
@@ -516,7 +536,7 @@ def train(train_set, langs, oov_dict, embedding_size=EMBEDDING_SIZE, learning_ra
 
             # For Decoding
             summary = Variable(torch.LongTensor(summary), requires_grad=False)
-            osummary = Variable(torch.LongTensor(osummary), requires_grad=False)
+            #osummary = Variable(torch.LongTensor(osummary), requires_grad=False)
             #print(summary)
             #print(osummary)
 
@@ -527,7 +547,7 @@ def train(train_set, langs, oov_dict, embedding_size=EMBEDDING_SIZE, learning_ra
             loss_optimizer.zero_grad()
             model.train()
             # calculate loss of "a batch of input sequence"
-            loss = sequenceloss(rt, re, rm, orm, summary, osummary, model)
+            loss = sequenceloss(rt, re, rm, orm, summary, data, model)
 
             # Backpropagation
             loss.backward()
