@@ -549,8 +549,9 @@ class Attn(nn.Module):
         hidden = hidden.unsqueeze(1)  # (batch_size, 1, hidden_size)
         hiddens = hidden.repeat(1, seq_len, 1)
         attn_energies = self.score(hiddens, encoder_outputs)
-        print(attn_energies)
-        exit(1)
+        # print(attn_energies)
+        # print(F.softmax(attn_energies, dim=1))
+        # exit(1)
         # # Calculate energies for each encoder output
         # for i in range(seq_len):
         #     attn_energies[:, i] = self.score(hidden, encoder_outputs[:, i])

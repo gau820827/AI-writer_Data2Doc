@@ -136,8 +136,6 @@ def hierarchical_predictwords(rt, re, rm, encoder, decoder, embedding_size, lang
             l_output, lnh, l_context, l_attn_weights, pgen = local_decoder(
                 l_input, lnh, g_attn_weights, local_encoder_outputs, blocks_len)
 
-            # print(g_attn_weights)
-
             l_attn_weights = l_attn_weights.squeeze(1)
             bg_attn_weights = g_attn_weights.view(batch_length * len(blocks_len), -1)
             # print(l_attn_weights.size())
@@ -146,6 +144,8 @@ def hierarchical_predictwords(rt, re, rm, encoder, decoder, embedding_size, lang
             combine_attn_weights = l_attn_weights * bg_attn_weights
             combine_attn_weights = combine_attn_weights.view(batch_length, -1)
             # print(torch.sum(combine_attn_weights))
+            # print(combine_attn_weights)
+            # print(pgen)
 
             if local_decoder.copy:
                 prob_copy = Variable(torch.zeros(l_output.shape), requires_grad=False)

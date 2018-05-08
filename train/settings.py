@@ -9,8 +9,8 @@ MAX_SENTENCES = 5
 MAX_TRAIN_NUM = None
 
 Model_name = None
-Model_name = '5s_copy_rnn'
-iterNum = 1698
+Model_name = 'copy_rnn'
+iterNum = 16990
 USE_MODEL = None
 if Model_name is not None:
     USE_MODEL = ['./models/'+Model_name + '_' + s + '_' + str(iterNum) for s in ['encoder', 'decoder', 'optim']]
