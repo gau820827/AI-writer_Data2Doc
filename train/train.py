@@ -143,7 +143,7 @@ def Hierarchical_seq_train(rt, re, rm, orm, summary, data, encoder, decoder,
     lnh = local_decoder.initHidden(batch_length)
 
     g_input = global_encoder_outputs[:, -1]
-    l_input = Variable(torch.LongTensor(batch_length).zero_(), requires_grad=False)
+    l_input = Variable(torch.LongTensor(batch_length).zero_())
     l_input = l_input.cuda() if use_cuda else l_input
 
     # Debugging check the dimension
@@ -161,7 +161,7 @@ def Hierarchical_seq_train(rt, re, rm, orm, summary, data, encoder, decoder,
                                                                     embedding_size)
     for di in range(target_length):
         # Feed the global decoder
-        if di == 0 or l_input[0].data[0] == BLK_TOKEN:
+        if di == 0 or l_input[0].item() == BLK_TOKEN:
             g_output, gnh, g_context, g_attn_weights = global_decoder(
                 g_input, gnh, global_encoder_outputs)
 
@@ -185,18 +185,37 @@ def Hierarchical_seq_train(rt, re, rm, orm, summary, data, encoder, decoder,
             combine_attn_weights = combine_attn_weights.view(batch_length, -1)
 
             # print(l_output)  # [batch, vocb_lang]
-            prob = Variable(torch.zeros(l_output.shape), requires_grad=False)
+            prob = Variable(torch.zeros(l_output.shape))
             prob = prob.cuda() if use_cuda else prob
 
             # Now we had rm as (batch, input) and combine_attn_weights as (batch, input)
             # Add up to the pgen probability matrix
-            prob = prob.scatter_add(1, rm, combine_attn_weights)
+            prob = prob.scatter_add(1, orm, combine_attn_weights)
+
+            # Check <UNK> equality
+            curword = summary[0, di].item()
+            oov_exist = False
+            if curword == 3:
+                prob_oov = Variable(torch.zeros([1,1]))
+                prob_oov += 1e-10 # TODO: find a way to fix zero prob
+                prob_oov = prob_oov.cuda() if use_cuda else prob_oov
+                for i in range(combine_attn_weights.shape[1]):
+                    if data[0][0][i][2] == data[0][1][di]:
+                        oov_exist = True
+                        prob_oov += combine_attn_weights[0,i]
+
+            # if oov_exist:
+            #     print(prob_oov)
 
             l_output_new = (l_output.exp() + (1 - pgen) * prob).log()
+            if oov_exist:
+                loss -= prob_oov.log().item()
+            else:
+                loss += criterion(l_output_new, summary[:, di])
         else:
             l_output_new = l_output
+            loss += criterion(l_output_new, summary[:, di])
 
-        loss += criterion(l_output_new, summary[:, di])
         g_input = lnh[-1, :, :]
         l_input = summary[:, di]  # Supervised
 
@@ -227,7 +246,7 @@ def Plain_seq_train(rt, re, rm, orm, summary, data, encoder, decoder,
 
     decoder_hidden = decoder.initHidden(batch_length)
     decoder_hidden[0, :, :] = context_vec  # might be zero
-    decoder_input = Variable(torch.LongTensor(batch_length).zero_(), requires_grad=False)
+    decoder_input = Variable(torch.LongTensor(batch_length).zero_())
     decoder_input = decoder_input.cuda() if use_cuda else decoder_input
     
     # Feed the target as the next input
@@ -252,10 +271,11 @@ def Plain_seq_train(rt, re, rm, orm, summary, data, encoder, decoder,
             oov_exist = False
             if curword == 3:
                 prob_oov = Variable(torch.zeros([1,1]))
+                prob_oov += 1e-10 # TODO: find a way to fix zero prob
                 prob_oov = prob_oov.cuda() if use_cuda else prob_oov
                 for i in range(decoder_attention.shape[1]):
                     if data[0][0][i][2] == data[0][1][di]:
-                        oov_exists = True
+                        oov_exist = True
                         prob_oov += decoder_attention[0,i]
             # Count different oov in rm
             # oovs = {6:0}
@@ -274,15 +294,17 @@ def Plain_seq_train(rt, re, rm, orm, summary, data, encoder, decoder,
             # prob_oov = prob_oov.scatter_add(1, orm, decoder_attention)
             # prob_oov = prob_oov.log()
             # prob_oov[:,0] = 0
-
-            # print(prob_oov)
+            # if oov_exist:
+            #     print(prob_oov)
             
             
             decoder_output_new = (decoder_output.exp() + (1-pgen)*prob).log()
             # print(torch.sum(decoder_output_new.exp(), 1))
             #loss += criterion((1-pgen).log(), orm)
             if oov_exist:
-                loss += -prob_oov.log()
+                idx = Variable(torch.LongTensor([0]))
+                idx = idx.cuda() if use_cuda else idx
+                loss += criterion(prob_oov.log(), idx)
             else:
                 loss += criterion(decoder_output_new, summary[:, di])            
         else:
