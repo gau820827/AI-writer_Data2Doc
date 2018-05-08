@@ -65,7 +65,7 @@ def find_max_block_numbers(batch_length, langs, rm):
     BLOCK_NUMBERS = np.ones(batch_length)
     for bi in range(batch_length):
         for ei in range(len(rm[bi, :])):
-            if langs['rm'].index2word[int(rm[bi, ei].item())] == '<EOB>':
+            if langs['rm'].index2word[int(rm[bi, ei].data[0])] == '<EOB>':
                 blocks_lens[bi].append(ei)
                 BLOCK_NUMBERS[bi] += 1
     return int(np.max(BLOCK_NUMBERS)), blocks_lens
@@ -161,7 +161,7 @@ def Hierarchical_seq_train(rt, re, rm, orm, summary, data, encoder, decoder,
                                                                     embedding_size)
     for di in range(target_length):
         # Feed the global decoder
-        if di == 0 or l_input[0].item() == BLK_TOKEN:
+        if di == 0 or l_input[0].data[0] == BLK_TOKEN:
             g_output, gnh, g_context, g_attn_weights = global_decoder(
                 g_input, gnh, global_encoder_outputs)
 
@@ -193,7 +193,7 @@ def Hierarchical_seq_train(rt, re, rm, orm, summary, data, encoder, decoder,
             prob = prob.scatter_add(1, orm, combine_attn_weights)
 
             # Check <UNK> equality
-            curword = summary[0, di].item()
+            curword = summary[0, di].data[0]
             oov_exist = False
             if curword == 3:
                 prob_oov = Variable(torch.zeros([1,1]))
@@ -208,8 +208,11 @@ def Hierarchical_seq_train(rt, re, rm, orm, summary, data, encoder, decoder,
             #     print(prob_oov)
 
             l_output_new = (l_output.exp() + (1 - pgen) * prob).log()
+
             if oov_exist:
-                loss -= prob_oov.log().item()
+                idx = Variable(torch.LongTensor([0]))
+                idx = idx.cuda() if use_cuda else idx
+                loss += criterion(prob_oov.log(), idx)
             else:
                 loss += criterion(l_output_new, summary[:, di])
         else:
@@ -267,7 +270,7 @@ def Plain_seq_train(rt, re, rm, orm, summary, data, encoder, decoder,
             # prob[:,3] = 0
 
             # Check <UNK> equality
-            curword = summary[0, di].item()
+            curword = summary[0, di].data[0]
             oov_exist = False
             if curword == 3:
                 prob_oov = Variable(torch.zeros([1,1]))
@@ -573,7 +576,7 @@ def train(train_set, langs, oov_dict, embedding_size=EMBEDDING_SIZE, learning_ra
 
             # Backpropagation
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(list(model.encoder.parameters()) +
+            torch.nn.utils.clip_grad_norm(list(model.encoder.parameters()) +
                                           list(model.decoder.parameters()),
                                           grad_clip)
             loss_optimizer.step()
