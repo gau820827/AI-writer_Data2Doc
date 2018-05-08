@@ -10,7 +10,7 @@ from preprocessing import data_iter
 from dataprepare import loaddata, data2index
 from model import docEmbedding, Seq2Seq
 from model import EncoderLIN, EncoderBiLSTM, EncoderBiLSTMMaxPool
-from model import HierarchicalRNN, HierarchicalBiLSTM
+from model import HierarchicalRNN, HierarchicalBiLSTM, HierarchicalLIN
 from model import AttnDecoderRNN, HierarchicalDecoder
 from util import gettime, load_model, show_triplets
 

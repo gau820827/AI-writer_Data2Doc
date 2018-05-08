@@ -563,9 +563,9 @@ class Attn(nn.Module):
     def score(self, hidden, encoder_outputs):
         # print('size of hidden: {}'.format(hidden.size()))
         # print('size of encoder_hidden: {}'.format(encoder_output.size()))
-        # energy = self.attn(encoder_outputs)
+        energy = self.attn(encoder_outputs)
         # energy = F.tanh(energy)
-        energy = encoder_outputs
+        # energy = encoder_outputs
         # print(encoder_outputs)
         # print(energy)
 
