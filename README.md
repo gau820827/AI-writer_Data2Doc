@@ -49,8 +49,8 @@ The `train/train.py` accepts the following arguments.
   -batch BATCH_SIZE,        batch size, default = 2
   
   # Parameters for model
-  -encoder ENCODER_STYLE,   type of encoder NN (LIN, BiLSTM, RNN, BiLSTMMax, HierarchicalRNN,
-                            HierarchicalBiLSTM, HierarchicalLIN)
+  -encoder ENCODER_STYLE,   type of encoder NN (LIN, BiLSTM, RNN, BiLSTMMaxPool, HierarchicalRNN,
+                            HierarchicalBiLSTMMaxPool, HierarchicalLIN)
   -decoder DECODER_STYLE,   type of decoder NN (RNN, HierarchcialRNN)
   -copy,                    if apply pointer-generator network(True, False), default = False
  
