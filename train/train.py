@@ -203,7 +203,7 @@ def Hierarchical_seq_train(rt, re, rm, orm, summary, data, encoder, decoder,
                     if data[0][0][i][2] == data[0][1][di]:
                         oov_exist = True
                         prob_oov += combine_attn_weights[0,i]
-
+            prob_oov *= (1-pgen)
             # if oov_exist:
             #     print(prob_oov)
 
@@ -280,6 +280,7 @@ def Plain_seq_train(rt, re, rm, orm, summary, data, encoder, decoder,
                     if data[0][0][i][2] == data[0][1][di]:
                         oov_exist = True
                         prob_oov += decoder_attention[0,i]
+            prob_oov *= (1-pgen)
             # Count different oov in rm
             # oovs = {6:0}
             # oovs_ctr = 1
@@ -404,7 +405,7 @@ def addpaddings(tokens, company=None, to=None):
 def model_initialization(encoder_style, 
 decoder_style, langs, 
 embedding_size, 
-learning_rate, pretrain, layer_depth, to_copy, iter_num):
+learning_rate, pretrain, layer_depth, to_copy, iter_num, load_optim=True):
     # Initialize the model
     emb = docEmbedding(langs['rt'].n_words, langs['re'].n_words,
                        langs['rm'].n_words, embedding_size)
@@ -466,11 +467,13 @@ learning_rate, pretrain, layer_depth, to_copy, iter_num):
     if use_model is not None:
         encoder = load_model(encoder, use_model[0])
         decoder = load_model(decoder, use_model[1])
-        if not use_cuda:
-            loss_optimizer.load_state_dict(torch.load(use_model[2], map_location=lambda storage, loc: storage))
+        if load_optim:
+            if not use_cuda:
+                loss_optimizer.load_state_dict(torch.load(use_model[2], map_location=lambda storage, loc: storage))
+            else:
+                loss_optimizer.load_state_dict(torch.load(use_model[2]))
         else:
-            loss_optimizer.load_state_dict(torch.load(use_model[2]))
-
+            loss_optimizer = None
     return encoder, decoder, loss_optimizer, train_func
 
 
