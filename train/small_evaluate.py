@@ -207,9 +207,8 @@ def predictwords(rt, re, rm, orm, data, encoder, decoder, embedding_size, langs,
     beams = [[0, [(SOS_TOKEN, 0)], decoder_hidden, decoder_attentions]]
     # (id, 0/1) 0 means in lang('summary'), 1 means oov
     # For each step
-    oov_idx = Variable(torch.LongTensor(orm.shape))
-    oov_idx = oov_idx.cuda() if use_cuda else oov_idx
     if decoder.copy:
+        oov_idx = Variable(torch.LongTensor(orm.shape))    
         oovs = {'<KWN>': 0}
         oovs_id2word = {0:'<KWN>'}
         oovs_ctr = len(oovs)
@@ -220,11 +219,13 @@ def predictwords(rt, re, rm, orm, data, encoder, decoder, embedding_size, langs,
             if orm[0,i].item() == 3:
                 if w not in oovs:
                     oovs[w] = oovs_ctr
-                    oovs_id2word[oovs_ctr]=w
+                    oovs_id2word[oovs_ctr] = w
                     oovs_ctr += 1
                 oov_idx[0,i] = oovs[w]
             else:
                 oov_idx[0,i] = 0
+        oov_idx = oov_idx.cuda() if use_cuda else oov_idx
+        
 
     for di in range(target_length):
 
@@ -247,7 +248,7 @@ def predictwords(rt, re, rm, orm, data, encoder, decoder, embedding_size, langs,
 
             decoder_input = Variable(torch.LongTensor([decoder_input]))
             decoder_input = decoder_input.cuda() if use_cuda else decoder_input
-            
+            # print("{} {}".format(decoder_input, inp_type))
             decoder_output, decoder_hidden, decoder_context, decoder_attention, pgen = decoder(
                 decoder_input, decoder_hidden, encoder_outputs)
 
@@ -257,7 +258,6 @@ def predictwords(rt, re, rm, orm, data, encoder, decoder, embedding_size, langs,
 
                 decoder_attention = decoder_attention.squeeze(1)
                 prob_copy = prob_copy.scatter_add(1, orm, decoder_attention)
-
                 #for i in range(orm.shape[1]):
                 #    print("{} {}".format(rm[0,i], orm[0,i]))
                 prob_oov = Variable(torch.zeros([1, len(oovs)]))
@@ -297,8 +297,8 @@ def predictwords(rt, re, rm, orm, data, encoder, decoder, embedding_size, langs,
             for i in range(beam_size):
                 p = topv[0,i]
                 idp = topi[0,i]
-                # if idp.item()==0:
-                #    continue
+                if idp.item()<0 or idp.item()>=langs['summary'].n_words:
+                    continue
                 new_beam = [prob + p, route + [(idp, 0)], decoder_hidden, atten]
                 q.push(new_beam, new_beam[0])
             if decoder.copy:
