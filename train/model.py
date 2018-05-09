@@ -60,7 +60,7 @@ class docEmbedding(nn.Module):
         emb_rm = self.embedding3(rm)
 
         emb_all = torch.cat([emb_rt, emb_re, emb_rm], dim=len(rt.size()))
-        output = self.linear(emb_all)
+        output = F.relu(self.linear(emb_all))
         return output
 
     def init_weights(self):
@@ -198,7 +198,7 @@ class EncoderRNN(nn.Module):
         return outputs, hidden
 
     def initHidden(self, batch_size):
-        result = Variable(torch.zeros(self.n_layers, batch_size, self.hidden_size), requires_grad=False)
+        result = Variable(torch.zeros(self.n_layers, batch_size, self.hidden_size))
 
         if use_cuda:
             return result.cuda()
@@ -381,7 +381,7 @@ class AttnDecoderRNN(nn.Module):
         return output, nh, context, attn_weights, pgen
 
     def initHidden(self, batch_size):
-        result = Variable(torch.zeros(self.n_layers, batch_size, self.hidden_size), requires_grad=False)
+        result = Variable(torch.zeros(self.n_layers, batch_size, self.hidden_size))
         if use_cuda:
             return result.cuda()
         else:
@@ -434,7 +434,7 @@ class GlobalAttnDecoderRNN(nn.Module):
         return output, nh, context, attn_weights
 
     def initHidden(self, batch_size):
-        result = Variable(torch.zeros(self.n_layers, batch_size, self.hidden_size), requires_grad=False)
+        result = Variable(torch.zeros(self.n_layers, batch_size, self.hidden_size))
         if use_cuda:
             return result.cuda()
         else:
@@ -518,7 +518,7 @@ class LocalAttnDecoderRNN(nn.Module):
         return output, nh, context, attn_weights, pgen
 
     def initHidden(self, batch_size):
-        result = Variable(torch.zeros(self.n_layers, batch_size, self.hidden_size), requires_grad=False)
+        result = Variable(torch.zeros(self.n_layers, batch_size, self.hidden_size))
         if use_cuda:
             return result.cuda()
         else:
