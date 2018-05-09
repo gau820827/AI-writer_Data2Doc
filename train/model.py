@@ -84,19 +84,23 @@ class HierarchicalLIN(nn.Module):
 class EncoderLIN(nn.Module):
     """This is the linear encoder for the box score.
 
-    From the origin paper, they use a linear encoder instead of standard
+    From the original paper, they use a linear encoder instead of standard
     sequential RNN style encoder. The encoder will mean pool over the entities
     and then linearly transform the concatenation of these pooled entity
     representations to initialize the decoder.
 
     """
+
     def __init__(self, hidden_size, embedding_layer, level='plain'):
+        """."""
         super(EncoderLIN, self).__init__()
+        self.name = 'LIN'
         self.level = level
         self.hidden_size = hidden_size
         if self.level == 'plain' or self.level == 'local':
             self.embedding = embedding_layer
-        self.avgpool = nn.AvgPool1d(3, stride=2, padding=1)
+        self.avgpool = nn.AvgPool1d(32, padding=1)
+        self.globpool = nn.AvgPool1d(22, padding=1)
 
     def forward(self, inputs, hidden):
         """Dims."""
@@ -104,41 +108,25 @@ class EncoderLIN(nn.Module):
         # embedded (n_batch, seq_len, emb_dim)
         # global inp: MAX_BLOCK, batch_length, input_length
         # hiddens (max_length, batch, hidden size)
-        # inp: (batch, seq_len, hidden)
-        if self.level == 'global':
-            batch_size = inputs['local_hidden_states'].size(1)
-            seq_len = inputs['local_hidden_states'].size(0)
-            inp = inputs['local_hidden_states'].permute(1, 0, 2)
-            hiddens = Variable(torch.zeros(seq_len, batch_size, self.hidden_size),
-                               requires_grad=False)
-            hiddens = hiddens.cuda() if use_cuda else hiddens
-            output = hidden
-            # # Test
-            # print("global LIN, inp dim = ", inp.shape)
-            # print("global LIN, output dim = ", output.shape)
-        else:
-            batch_size = inputs['rt'].size(0)
-            seq_len = inputs['rt'].size(1)
-            inp = self.embedding(inputs['rt'], inputs['re'], inputs['rm'])
-            hiddens = Variable(torch.zeros(seq_len, batch_size, self.hidden_size),
-                               requires_grad=False)
-            hiddens = hiddens.cuda() if use_cuda else hiddens
-            output = hidden
-            # # Test
-            # print("local, plain LIN, inp dim = ", inp.shape)
-            # print("local plain LIN, output dim = ", output.shape)
 
-        for ei in range(seq_len):
-            if self.level == 'local' and ei > 0 and ei % 32 == 0:
-                # Local needs to reinit by block.
-                output = self.initHidden(batch_size)
-            output = torch.cat((inp[:, ei, :], output), dim=1)
-            output = self.avgpool(output.unsqueeze(1))
-            output = output.squeeze(1)
-            hiddens[ei, :, :] = output
-        # # Test
-        # print("LIN output shape, ", hiddens.shape)
-        return hiddens, output.unsqueeze(0)
+        if self.level == 'global':
+            # AvgPool for each row as R, AvgPool for each
+            inp = inputs['local_hidden_states'].permute(2, 1, 0)
+            # print("LIN global input dimension", inp.shape)
+            # inp: (seq_len, batch, dimension)
+            outputs = self.avgpool(inp)
+            hidden = self.globpool(outputs).permute(2, 1, 0)
+            outputs = outputs.permute(2, 1, 0)
+            # print("LIN global output: ", outputs.shape)
+            # print("LIN global hiddens: ", hidden.shape)
+        else:
+            # Local and Plain.
+            inp = self.embedding(inputs['rt'], inputs['re'], inputs['rm'])
+            outputs = inp.permute(1, 0, 2)
+            hidden = outputs[-1, :, :]
+            print("Local outputs ", outputs.shape)
+            print("Local hiddens ", hidden.shape)
+        return outputs, hidden
 
     def initHidden(self, batch_size):
         result = Variable(torch.zeros(batch_size, self.hidden_size), requires_grad=False)
@@ -161,6 +149,7 @@ class EncoderRNN(nn.Module):
     """Vanilla encoder using pure gru."""
     def __init__(self, hidden_size, embedding_layer, n_layers=LAYER_DEPTH, level='plain'):
         super(EncoderRNN, self).__init__()
+        self.name = 'RNN'
         self.level = level
         self.n_layers = n_layers
         self.hidden_size = hidden_size
@@ -169,21 +158,18 @@ class EncoderRNN(nn.Module):
         self.gru = nn.GRU(hidden_size, hidden_size, num_layers=self.n_layers)
 
     def forward(self, inputs, hidden):
-        # embedded is of size (n_batch, seq_len, emb_dim)
+        # emb (n_batch, seq_len, emb_dim)
+        # inp (seq_len, batch, emb_dim)
         # gru needs (seq_len, n_batch, emb_dim)
         if self.level == 'global':
             outputs, hidden = self.gru(inputs['local_hidden_states'], hidden)
-            # # Test
-            # print("global RNN, input shape = ", inputs['local_hidden_states'].shape)
-            # print("global RNN, outputs shape = ", outputs.shape)
+            # print("RNN global output dimension", outputs.shape)
+            # print("RNN global hidden dimension", hidden.shape)
         else:
             embedded = self.embedding(inputs['rt'], inputs['re'], inputs['rm'])
             inp = embedded.permute(1, 0, 2)
-            # inp (seq_len, batch, emb_dim)
-            # print("RNN, input shape", inp.shape)
             if self.level == 'plain':
                 outputs, hidden = self.gru(inp, hidden)
-                # print("RNN, plain outputs shape", outputs.shape)
             else:
                 # Local.
                 seq_len, batch_size, embed_dim = inp.size()
@@ -197,10 +183,10 @@ class EncoderRNN(nn.Module):
                     output, hidden = self.gru(seq_i, hidden)
                     # output of size: (1, batch, emb_dim)
                     outputs[ei, :, :] = output[0, :, :]
-                # print("RNN, local outputs shape", outputs.shape)
+                # print("RNN local output dimension", outputs.shape)
+                # print("RNN local hidden dimension", hidden.shape)
         # outputs (seq_len, batch, hidden_size * num_directions)
         # hidden is the at t = seq_len
-        print("last shape = ", hidden.shape)
         return outputs, hidden
 
     def initHidden(self, batch_size):
@@ -226,6 +212,7 @@ class EncoderBiLSTM(nn.Module):
     """Vanilla encoder using pure LSTM."""
     def __init__(self, hidden_size, embedding_layer, n_layers=LAYER_DEPTH, level='plain'):
         super(EncoderBiLSTM, self).__init__()
+        self.name = 'BiLSTM'
         self.level = level
         self.n_layers = n_layers
         self.hidden_size = hidden_size
@@ -239,7 +226,11 @@ class EncoderBiLSTM(nn.Module):
         # lstm output: (seq_len, batch, hidden_size * num_directions)
         if self.level == 'global':
             inp = inputs['local_hidden_states']
-            outputs, hidden = self.bilstm(inp, hidden)
+            print("Global input shape, ", inp.shape)
+            outputs, hn = self.bilstm(inp, hidden)
+            # Not sure if it's correct.
+            print("BiLSTM outputs shape = ", outputs.shape)
+            return outputs, hn
         else:
             embedded = self.embedding(inputs['rt'], inputs['re'], inputs['rm'])
             inp = embedded.permute(1, 0, 2)
@@ -254,20 +245,20 @@ class EncoderBiLSTM(nn.Module):
                     if ei > 0 and ei % 32 == 0:
                         # Local needs to reinit by block.
                         hidden = self.initHidden(batch_size)
-
                     seq_i = inp[ei, :, :].unsqueeze(0)
+                    print("seq_i shape ", seq_i.shape)
                     # inputs of size: (1, batch, emb_dim)
-                    output, hidden = self.bilstm(seq_i, hidden)
+                    output, hn = self.bilstm(seq_i, hidden)
+                    print(output.shape)
                     outputs[ei, :, :] = output[0, :, :]
                     # output of size: (1, batch, emb_dim)
-        if self.level == 'global':
-            # Not sure if it's correct.
-            return outputs, hidden.unsqueeze(0)
-        return outputs, hidden
+            return outputs, hn
 
     def initHidden(self, batch_size):
-        forward = Variable(torch.zeros(2 * self.n_layers, batch_size, self.hidden_size // 2), requires_grad=False)
-        backward = Variable(torch.zeros(2 * self.n_layers, batch_size, self.hidden_size // 2), requires_grad=False)
+        forward = Variable(torch.zeros(2 * self.n_layers, batch_size,
+                                       self.hidden_size // 2), requires_grad=False)
+        backward = Variable(torch.zeros(2 * self.n_layers, batch_size,
+                                        self.hidden_size // 2), requires_grad=False)
         if use_cuda:
             return (forward.cuda(), backward.cuda())
         else:
@@ -288,6 +279,7 @@ class EncoderBiLSTMMaxPool(nn.Module):
     """Vanilla encoder using pure LSTM."""
     def __init__(self, hidden_size, embedding_layer, n_layers=LAYER_DEPTH, level='plain'):
         super(EncoderBiLSTMMaxPool, self).__init__()
+        self.name = 'BiLSTMMaxPool'
         self.level = level
         self.n_layers = n_layers
         self.hidden_size = hidden_size
@@ -298,6 +290,7 @@ class EncoderBiLSTMMaxPool(nn.Module):
     def forward(self, inputs, hidden):
         # embedded is of size (n_batch, seq_len, emb_dim)
         # lstm needs: (seq_len, batch, input_size)
+        print("Hidden type: ", hidden)
         if self.level == 'global':
             inp = inputs['local_hidden_states']
             bilstm_outs, nh = self.bilstm(inp, hidden)
@@ -327,7 +320,7 @@ class EncoderBiLSTMMaxPool(nn.Module):
         output = F.max_pool1d(output, output.size(2)).squeeze(2)
         if self.level == 'global':
             # Not sure if it's correct.
-            return bilstm_outs, output.unsqueeze(0)
+            return bilstm_outs, output[0]
         return bilstm_outs, output
 
     def initHidden(self, batch_size):

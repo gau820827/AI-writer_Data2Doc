@@ -74,12 +74,14 @@ def find_max_block_numbers(batch_length, langs, rm):
 
 
 def initGlobalEncoderInput(MAX_BLOCK, batch_length, input_length, embedding_size,
-                           local_outputs, BLOCK_JUMPS=32):
+                           local_outputs, BLOCK_JUMPS=32, name=None):
     """
     Args: local_outputs: (batch, seq_len, embed_size)
     """
     # print("Max block = ", MAX_BLOCK)
     # print("input length = ", input_length)
+    if name == 'LIN':
+        return local_outputs
     global_input = Variable(torch.zeros(MAX_BLOCK, batch_length,
                                         embedding_size))
     global_input = global_input.cuda() if use_cuda else global_input
@@ -130,9 +132,10 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
     init_global_hidden = GlobalEncoder.initHidden(batch_length)
     local_encoder_outputs, local_hidden = LocalEncoder(inputs, init_local_hidden)
     global_input = initGlobalEncoderInput(MAX_BLOCK, batch_length, input_length,
-                                          embedding_size, local_encoder_outputs)
+                                          embedding_size, local_encoder_outputs,
+                                          name=GlobalEncoder.name)
     global_encoder_outputs, global_hidden = GlobalEncoder({"local_hidden_states":
-                                                          global_input}, init_global_hidden)
+                                                           global_input}, init_global_hidden)
 
     """
     Encoder Final Dimension: (batch, sequence length, hidden size)
