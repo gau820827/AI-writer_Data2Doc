@@ -72,7 +72,14 @@ def readLang(data_set):
     rt = Lang('rt', threshold=1)
     re = Lang('re', threshold=1)
     rm = Lang('rm', threshold=1)
-    summarize = Lang('summarize', threshold=100)
+    summarize = Lang('summarize', threshold=10)
+
+    def RepresentsInt(s):
+        try: 
+            int(s)
+            return True
+        except ValueError:
+            return False
 
     for v in data_set:
         for triplet in v.triplets:
@@ -86,7 +93,8 @@ def readLang(data_set):
     for v in data_set:
         for word in v.summary:
             # summary
-            summarize.addword(word)
+            if not RepresentsInt(word):
+                summarize.addword(word)
 
     return rt, re, rm, summarize
 

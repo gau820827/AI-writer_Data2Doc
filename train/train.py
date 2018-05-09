@@ -10,13 +10,13 @@ from torch import optim
 from preprocessing import data_iter
 from dataprepare import loaddata, data2index
 from model import docEmbedding, Seq2Seq
-from model import EncoderLIN, EncoderBiLSTM, EncoderBiLSTMMaxPool
+from model import EncoderLIN, EncoderBiLSTM, EncoderBiLSTMMaxPool, EncoderRNN
 from model import HierarchicalRNN, HierarchicalBiLSTM, HierarchicalLIN
 from model import AttnDecoderRNN, HierarchicalDecoder
 from util import gettime, load_model, show_triplets
 
 from settings import file_loc, use_cuda
-from settings import EMBEDDING_SIZE, LR, EPOCH_TIME, BATCH_SIZE, GRAD_CLIP, USE_MODEL
+from settings import EMBEDDING_SIZE, LR, EPOCH_TIME, BATCH_SIZE, GRAD_CLIP
 from settings import MAX_SENTENCES, ENCODER_STYLE, DECODER_STYLE, TOCOPY
 from settings import GET_LOSS, SAVE_MODEL, OUTPUT_FILE, COPY_PLAYER, MAX_LENGTH
 from settings import LAYER_DEPTH, PRETRAIN, MAX_TRAIN_NUM, iterNum
@@ -203,7 +203,7 @@ def Hierarchical_seq_train(rt, re, rm, orm, summary, data, encoder, decoder,
                     if data[0][0][i][2] == data[0][1][di]:
                         oov_exist = True
                         prob_oov += combine_attn_weights[0,i]
-            prob_oov *= (1-pgen)
+                prob_oov *= (1-pgen)
             # if oov_exist:
             #     print(prob_oov)
 
@@ -253,6 +253,7 @@ def Plain_seq_train(rt, re, rm, orm, summary, data, encoder, decoder,
     decoder_input = decoder_input.cuda() if use_cuda else decoder_input
     
     # Feed the target as the next input
+    copy_ctr = 0
     for di in range(target_length):
 
         decoder_output, decoder_hidden, decoder_context, decoder_attention, pgen = decoder(
@@ -280,32 +281,13 @@ def Plain_seq_train(rt, re, rm, orm, summary, data, encoder, decoder,
                     if data[0][0][i][2] == data[0][1][di]:
                         oov_exist = True
                         prob_oov += decoder_attention[0,i]
-            prob_oov *= (1-pgen)
-            # Count different oov in rm
-            # oovs = {6:0}
-            # oovs_ctr = 1
-            # print(orm)
-            # for b in range(orm.shape[0]):
-            #     for i in range(orm.shape[1]):
-            #         if orm[b,i].item() not in oovs:
-            #             oovs[orm[b,i].item()] = oovs_ctr
-            #             oovs_ctr += 1
-            #         orm[b,i] = oovs[orm[b,i].item()]
-            # print(orm)
-            # prob_oov = Variable(torch.zeros([decoder_attention.shape[0], 1]))
-            # prob_oov = prob_oov.cuda() if use_cuda else prob_oov
-
-            # prob_oov = prob_oov.scatter_add(1, orm, decoder_attention)
-            # prob_oov = prob_oov.log()
-            # prob_oov[:,0] = 0
-            # if oov_exist:
-            #     print(prob_oov)
-            
+                prob_oov *= (1-pgen)
             
             decoder_output_new = (decoder_output.exp() + (1-pgen)*prob).log()
             # print(torch.sum(decoder_output_new.exp(), 1))
             #loss += criterion((1-pgen).log(), orm)
             if oov_exist:
+                copy_ctr+=1
                 idx = Variable(torch.LongTensor([0]))
                 idx = idx.cuda() if use_cuda else idx
                 loss += criterion(prob_oov.log(), idx)
@@ -316,7 +298,7 @@ def Plain_seq_train(rt, re, rm, orm, summary, data, encoder, decoder,
             loss += criterion(decoder_output_new, summary[:, di])
         
         decoder_input = summary[:, di]  # Supervised
-
+    print("Copy_training: {}".format(copy_ctr))
     return loss
 
 
@@ -404,8 +386,7 @@ def addpaddings(tokens, company=None, to=None):
 
 def model_initialization(encoder_style, 
 decoder_style, langs, 
-embedding_size, 
-learning_rate, pretrain, layer_depth, to_copy, iter_num, load_optim=True):
+embedding_size, learning_rate, pretrain, layer_depth, to_copy, iter_num, load_optim=True):
     # Initialize the model
     emb = docEmbedding(langs['rt'].n_words, langs['re'].n_words,
                        langs['rm'].n_words, embedding_size)
@@ -417,6 +398,9 @@ learning_rate, pretrain, layer_depth, to_copy, iter_num, load_optim=True):
 
     elif encoder_style == 'BiLSTM':
         encoder = EncoderBiLSTM(embedding_size, emb, n_layers=layer_depth)
+
+    elif encoder_style == 'RNN':
+        encoder = EncoderRNN(embedding_size, emb, n_layers=layer_depth)
 
     elif encoder_style == 'BiLSTMMax':
         encoder = EncoderBiLSTMMaxPool(embedding_size, emb, n_layers=layer_depth)
@@ -474,6 +458,7 @@ learning_rate, pretrain, layer_depth, to_copy, iter_num, load_optim=True):
                 loss_optimizer.load_state_dict(torch.load(use_model[2]))
         else:
             loss_optimizer = None
+    print(use_model)
     return encoder, decoder, loss_optimizer, train_func
 
 
@@ -483,7 +468,7 @@ def train(train_set, langs, oov_dict, embedding_size=EMBEDDING_SIZE, learning_ra
           to_copy=TOCOPY, epoch_time=EPOCH_TIME, layer_depth=LAYER_DEPTH,
           max_length=MAX_LENGTH, max_sentence=MAX_SENTENCES,
           save_model=SAVE_MODEL, output_file=OUTPUT_FILE,
-          iter_num=iterNum, pretrain=PRETRAIN, use_model=USE_MODEL):
+          iter_num=iterNum, pretrain=PRETRAIN):
     """The training procedure."""
     # # Test arg parser (For Debugging)
     # print("embedding_size={}, learning_rate={}, batch_size={}, get_loss={}, grad_clip={},\

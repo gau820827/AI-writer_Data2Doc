@@ -4,13 +4,12 @@ file_loc = '../boxscore-data/rotowire/'
 use_cuda = torch.cuda.is_available()
 
 MAX_LENGTH = 800
-
-Model_name = None
-# Model_name = 'hi_copy'
-USE_MODEL = 'copy'
-iterNum = 640
-if Model_name is not None:
-    USE_MODEL = ['./models/'+Model_name + '_' + s + '_' + str(iterNum) for s in ['encoder', 'decoder', 'optim']]
+# USE_MODEL = None
+# Model_name = None
+# Model_name = 'pl_copy_test'
+# iterNum = 120
+# if Model_name is not None:
+#     USE_MODEL = ['./models/'+Model_name + '_' + s + '_' + str(iterNum) for s in ['encoder', 'decoder', 'optim']]
 # USE_MODEL = ['./models/clipped_encoder_25440', './models/clipped_decoder_25440']
 # USE_MODEL = ['./models/long3_encoder_36040',
 #              './models/long3_decoder_36040',
@@ -18,21 +17,23 @@ if Model_name is not None:
 
 # Parameter for training
 MAX_SENTENCES = None
-MAX_TRAIN_NUM = None
+MAX_TRAIN_NUM = 20
 
 # PRETRAIN is the model name that you want read
 # The naming convention is 'PRETRAIN_iterNum'
+# PRETRAIN = 'pl_copy_test'
 PRETRAIN = None
 iterNum = None
+# iterNum = 300
 
 # Default hyper-parameters for training
 EMBEDDING_SIZE = 600
 LR = 0.01  # Adagrad
 # LR = 0.003  # Adam
-EPOCH_TIME = 220
+EPOCH_TIME = 100
 BATCH_SIZE = 1
-GRAD_CLIP = 5
-LAYER_DEPTH = 2
+GRAD_CLIP = 3
+LAYER_DEPTH = 1
 
 # Default parameters for display
 GET_LOSS = 1
@@ -41,15 +42,15 @@ SAVE_MODEL = 1
 # Choose models
 
 # ENCODER_STYLE = 'LIN'
-# ENCODER_STYLE = 'RNN'
-ENCODER_STYLE = 'BiLSTM'
+ENCODER_STYLE = 'RNN'
+# ENCODER_STYLE = 'BiLSTM'
 DECODER_STYLE = 'RNN'
 
-#ENCODER_STYLE = 'HierarchicalBiLSTM'
-#DECODER_STYLE = 'HierarchicalRNN'
-OUTPUT_FILE = 'copy'
+# ENCODER_STYLE = 'HierarchicalBiLSTM'
+# DECODER_STYLE = 'HierarchicalRNN'
+OUTPUT_FILE = 'pl_nonum'
 COPY_PLAYER = True
-TOCOPY = True
+TOCOPY = False
 
 # DATA PREPROCESSING
 MAX_PLAYERS = 31  # information taken from rotowire
