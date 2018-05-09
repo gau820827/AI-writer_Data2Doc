@@ -99,8 +99,7 @@ class EncoderLIN(nn.Module):
         self.hidden_size = hidden_size
         if self.level == 'plain' or self.level == 'local':
             self.embedding = embedding_layer
-        self.avgpool = nn.AvgPool1d(32, padding=1)
-        self.globpool = nn.AvgPool1d(22, padding=1)
+        self.avgpool = nn.AvgPool1d(32)
 
     def forward(self, inputs, hidden):
         """Dims."""
@@ -112,20 +111,17 @@ class EncoderLIN(nn.Module):
         if self.level == 'global':
             # AvgPool for each row as R, AvgPool for each
             inp = inputs['local_hidden_states'].permute(2, 1, 0)
-            # print("LIN global input dimension", inp.shape)
             # inp: (seq_len, batch, dimension)
+            seq_len = inp.size(0)
             outputs = self.avgpool(inp)
-            hidden = self.globpool(outputs).permute(2, 1, 0)
+            globpool = nn.AvgPool1d(int(seq_len / 32))
+            hidden = globpool(outputs).permute(2, 1, 0)
             outputs = outputs.permute(2, 1, 0)
-            # print("LIN global output: ", outputs.shape)
-            # print("LIN global hiddens: ", hidden.shape)
         else:
             # Local and Plain.
             inp = self.embedding(inputs['rt'], inputs['re'], inputs['rm'])
             outputs = inp.permute(1, 0, 2)
             hidden = outputs[-1, :, :]
-            print("Local outputs ", outputs.shape)
-            print("Local hiddens ", hidden.shape)
         return outputs, hidden
 
     def initHidden(self, batch_size):

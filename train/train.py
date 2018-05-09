@@ -110,7 +110,7 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
     batch_length = rt.size()[0]
     input_length = rt.size()[1]
     target_length = summary.size()[1]
-
+    print("input length ", input_length)
     # MAX_BLOCK is the number of global hidden states
     # block_lens is the start position of each block
     MAX_BLOCK, blocks_lens = find_max_block_numbers(batch_length, langs, rm)
