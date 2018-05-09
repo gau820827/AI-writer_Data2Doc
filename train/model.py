@@ -60,7 +60,8 @@ class docEmbedding(nn.Module):
         emb_rm = self.embedding3(rm)
 
         emb_all = torch.cat([emb_rt, emb_re, emb_rm], dim=len(rt.size()))
-        output = self.linear(emb_all)
+        output = F.relu(self.linear(emb_all))
+        # output = self.linear(emb_all)
         return output
 
     def init_weights(self):
