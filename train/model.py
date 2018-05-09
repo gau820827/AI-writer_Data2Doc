@@ -113,9 +113,9 @@ class EncoderLIN(nn.Module):
             inp = inputs['local_hidden_states'].permute(2, 1, 0)
             # inp: (seq_len, batch, dimension)
             seq_len = inp.size(0)
-            outputs = self.avgpool(inp)
-            globpool = nn.AvgPool1d(int(seq_len / 32))
-            hidden = globpool(outputs).permute(2, 1, 0)
+            outputs = F.avg_pool1d(inp, 32)
+            # 32 is the size of each block
+            hidden = F.avg_pool1d(outputs, int(seq_len / 32)).permute(2, 1, 0)
             outputs = outputs.permute(2, 1, 0)
         else:
             # Local and Plain.
@@ -159,8 +159,6 @@ class EncoderRNN(nn.Module):
         # gru needs (seq_len, n_batch, emb_dim)
         if self.level == 'global':
             outputs, hidden = self.gru(inputs['local_hidden_states'], hidden)
-            # print("RNN global output dimension", outputs.shape)
-            # print("RNN global hidden dimension", hidden.shape)
         else:
             embedded = self.embedding(inputs['rt'], inputs['re'], inputs['rm'])
             inp = embedded.permute(1, 0, 2)
@@ -179,8 +177,6 @@ class EncoderRNN(nn.Module):
                     output, hidden = self.gru(seq_i, hidden)
                     # output of size: (1, batch, emb_dim)
                     outputs[ei, :, :] = output[0, :, :]
-                # print("RNN local output dimension", outputs.shape)
-                # print("RNN local hidden dimension", hidden.shape)
         # outputs (seq_len, batch, hidden_size * num_directions)
         # hidden is the at t = seq_len
         return outputs, hidden
@@ -224,8 +220,6 @@ class EncoderBiLSTM(nn.Module):
             inp = inputs['local_hidden_states']
             outputs, (hn, cn) = self.bilstm(inp, hidden)
             # hn: (num_layers * num_directions, batch, hidden_size):
-            # print("Global input shape, ", inp.shape)
-            # print("BiLSTM outputs shape = ", outputs.shape)
             return outputs, hn.view(self.n_layers, -1, self.hidden_size)
         else:
             embedded = self.embedding(inputs['rt'], inputs['re'], inputs['rm'])
@@ -306,16 +300,17 @@ class EncoderBiLSTMMaxPool(nn.Module):
                     outputs, hidden = self.bilstm(inputs, hidden)
                     # output of size: (1, batch, emb_dim)
                     bilstm_outs[ei, :, :] = outputs[0, :, :]
-
-        # bilstm_outs: (seq_len, batch, hidden_size * num_directions )
+        # bilstm_outs: (seq_len, batch, hidden_size * num_directions)
         output = bilstm_outs.permute(1, 2, 0)
         # bilstm_outs: (batch, hidden_size * num_directions, seq_len)
         output = F.max_pool1d(output, output.size(2)).squeeze(2)
-        return bilstm_outs, output.view(self.n_layers, -1, self.hidden_size)
+        return bilstm_outs, output.unsqueeze(0)
 
     def initHidden(self, batch_size):
-        forward = Variable(torch.zeros(2 * self.n_layers, batch_size, self.hidden_size // 2), requires_grad=False)
-        backward = Variable(torch.zeros(2 * self.n_layers, batch_size, self.hidden_size // 2), requires_grad=False)
+        forward = Variable(torch.zeros(2 * self.n_layers, batch_size,
+                                       self.hidden_size // 2), requires_grad=False)
+        backward = Variable(torch.zeros(2 * self.n_layers, batch_size,
+                                        self.hidden_size // 2), requires_grad=False)
         if use_cuda:
             return (forward.cuda(), backward.cuda())
         else:
