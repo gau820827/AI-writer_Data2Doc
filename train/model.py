@@ -226,16 +226,16 @@ class EncoderBiLSTM(nn.Module):
         # lstm output: (seq_len, batch, hidden_size * num_directions)
         if self.level == 'global':
             inp = inputs['local_hidden_states']
-            print("Global input shape, ", inp.shape)
-            outputs, hn = self.bilstm(inp, hidden)
-            # Not sure if it's correct.
-            print("BiLSTM outputs shape = ", outputs.shape)
-            return outputs, hn
+            outputs, (hn, cn) = self.bilstm(inp, hidden)
+            # hn: (num_layers * num_directions, batch, hidden_size):
+            # print("Global input shape, ", inp.shape)
+            # print("BiLSTM outputs shape = ", outputs.shape)
+            return outputs, hn.view(self.n_layers, -1, self.hidden_size)
         else:
             embedded = self.embedding(inputs['rt'], inputs['re'], inputs['rm'])
             inp = embedded.permute(1, 0, 2)
             if self.level == 'plain':
-                outputs, hidden = self.bilstm(inp, hidden)
+                outputs, (hn, cn) = self.bilstm(inp, hidden)
             else:
                 # Local.
                 seq_len, batch_size, embed_dim = inp.size()
@@ -246,13 +246,11 @@ class EncoderBiLSTM(nn.Module):
                         # Local needs to reinit by block.
                         hidden = self.initHidden(batch_size)
                     seq_i = inp[ei, :, :].unsqueeze(0)
-                    print("seq_i shape ", seq_i.shape)
                     # inputs of size: (1, batch, emb_dim)
-                    output, hn = self.bilstm(seq_i, hidden)
-                    print(output.shape)
+                    output, (hn, cn) = self.bilstm(seq_i, hidden)
                     outputs[ei, :, :] = output[0, :, :]
                     # output of size: (1, batch, emb_dim)
-            return outputs, hn
+            return outputs, hn.view(self.n_layers, -1, self.hidden_size)
 
     def initHidden(self, batch_size):
         forward = Variable(torch.zeros(2 * self.n_layers, batch_size,
@@ -290,16 +288,15 @@ class EncoderBiLSTMMaxPool(nn.Module):
     def forward(self, inputs, hidden):
         # embedded is of size (n_batch, seq_len, emb_dim)
         # lstm needs: (seq_len, batch, input_size)
-        print("Hidden type: ", hidden)
         if self.level == 'global':
             inp = inputs['local_hidden_states']
-            bilstm_outs, nh = self.bilstm(inp, hidden)
+            bilstm_outs, hidden = self.bilstm(inp, hidden)
         else:
             # Local or Plain.
             embedded = self.embedding(inputs['rt'], inputs['re'], inputs['rm'])
             inp = embedded.permute(1, 0, 2)
             if self.level == 'plain':
-                bilstm_outs, nh = self.bilstm(inp, hidden)
+                bilstm_outs, hidden = self.bilstm(inp, hidden)
             else:
                 # Local.
                 seq_len, batch_size, embed_dim = inp.size()
@@ -318,10 +315,7 @@ class EncoderBiLSTMMaxPool(nn.Module):
         output = bilstm_outs.permute(1, 2, 0)
         # bilstm_outs: (batch, hidden_size * num_directions, seq_len)
         output = F.max_pool1d(output, output.size(2)).squeeze(2)
-        if self.level == 'global':
-            # Not sure if it's correct.
-            return bilstm_outs, output[0]
-        return bilstm_outs, output
+        return bilstm_outs, output.view(self.n_layers, -1, self.hidden_size)
 
     def initHidden(self, batch_size):
         forward = Variable(torch.zeros(2 * self.n_layers, batch_size, self.hidden_size // 2), requires_grad=False)

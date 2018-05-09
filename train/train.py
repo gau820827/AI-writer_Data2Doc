@@ -117,11 +117,6 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
 
     inputs = {"rt": rt, "re": re, "rm": rm}
 
-    # Test:
-    print("Inputs dim: rt = {} re = {} rm = {}".format(inputs['rt'].shape,
-                                                       inputs['re'].shape,
-                                                       inputs['rm'].shape))
-
     LocalEncoder = encoder.LocalEncoder
     GlobalEncoder = encoder.GlobalEncoder
 
