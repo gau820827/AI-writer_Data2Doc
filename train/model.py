@@ -74,7 +74,7 @@ class docEmbedding(nn.Module):
 
     def init_weights(self):
         initrange = 0.1
-        lin_layers = [self.linear]
+        lin_layers = []
         em_layer = [self.embedding1, self.embedding2, self.embedding3]
 
         for layer in lin_layers + em_layer:

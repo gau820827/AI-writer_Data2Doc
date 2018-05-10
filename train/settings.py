@@ -47,11 +47,11 @@ SAVE_MODEL = 1
 # ENCODER_STYLE = 'BiLSTM'
 # DECODER_STYLE = 'RNN'
 
-ENCODER_STYLE = 'HierarchicalRNN'
+ENCODER_STYLE = 'HierarchicalLIN'
 DECODER_STYLE = 'HierarchicalRNN'
 OUTPUT_FILE = 'hi'
 COPY_PLAYER = True
-TOCOPY = False
+TOCOPY = True
 
 # DATA PREPROCESSING
 MAX_PLAYERS = 31  # information taken from rotowire
