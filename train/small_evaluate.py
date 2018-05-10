@@ -203,6 +203,8 @@ def hierarchical_predictwords(rt, re, rm, orm, data, encoder, decoder, embedding
             for i in range(beam_size):
                 p = topv[0][i]
                 idp = topi[0][i]
+                if idp.item()<0 or idp.item()>=langs['summary'].n_words:
+                    continue
                 new_beam = [prob + p, route + [(idp, 0)], gnh, lnh, lnh[-1, :, :], g_attn_weights, atten]
                 q.push(new_beam, new_beam[0].item())
             if local_decoder.copy:

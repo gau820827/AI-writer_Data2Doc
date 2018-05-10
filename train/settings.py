@@ -18,14 +18,14 @@ MAX_LENGTH = 800
 
 # Parameter for training
 MAX_SENTENCES = None
-MAX_TRAIN_NUM = None
+MAX_TRAIN_NUM = 1000
 
 # PRETRAIN is the model name that you want read
 # The naming convention is 'PRETRAIN_iterNum'
-# PRETRAIN = 'pl_copy_th1000'
-# iterNum = 860
-PRETRAIN = None
-iterNum = None
+PRETRAIN = 'hi_copy'
+iterNum = 240
+# PRETRAIN = None
+# iterNum = None
 
 # Default hyper-parameters for training
 EMBEDDING_SIZE = 600
@@ -37,7 +37,7 @@ GRAD_CLIP = 3
 LAYER_DEPTH = 1
 
 # Default parameters for display
-GET_LOSS = 5
+GET_LOSS = 200
 SAVE_MODEL = 1
 
 # Choose models
