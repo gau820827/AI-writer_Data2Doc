@@ -107,30 +107,46 @@ class EncoderLIN(nn.Module):
         self.avgpool = nn.AvgPool1d(3, stride=2, padding=1)
 
     def forward(self, inputs, hidden):
+        """Dims."""
         # rt (n_batch, seq_len)
+        # embedded (n_batch, seq_len, emb_dim)
+        # global inp: MAX_BLOCK, batch_length, input_length
+        # hiddens (max_length, batch, hidden size)
+        # inp: (batch, seq_len, hidden)
+
         if self.level == 'local':
-            n_batch = inputs['rt'].size()[0]
+            batch_size = inputs['rt'].size()[0]
             seq_len = inputs['rt'].size()[1]
             inp = self.embedding(inputs['rt'], inputs['re'], inputs['rm'])
-            # embedded (n_batch, seq_len, emb_dim)
+            hiddens = Variable(torch.zeros(seq_len, batch_size, self.hidden_size),
+                               requires_grad=False)
+            hiddens = hiddens.cuda() if use_cuda else hiddens
+            output = hidden
+
+            for ei in range(seq_len):
+                if ei > 0 and ei % 32 == 0:
+                    output = self.initHidden(batch_size)
+
+                output = torch.cat((inp[:, ei, :], output), dim=1)
+                output = self.avgpool(output.unsqueeze(1))
+                output = output.squeeze(1)
+                hiddens[ei, :, :] = output
+
         else:
-            # global inp: MAX_BLOCK, batch_length, input_length
+            batch_size = inputs['local_hidden_states'].size()[1]
             seq_len = inputs['local_hidden_states'].size()[0]
-            n_batch = inputs['local_hidden_states'].size()[1]
             inp = inputs['local_hidden_states'].permute(1, 0, 2)
+            hiddens = Variable(torch.zeros(seq_len, batch_size, self.hidden_size),
+                               requires_grad=False)
+            hiddens = hiddens.cuda() if use_cuda else hiddens
+            output = hidden
 
-        # hiddens (max_length, batch, hidden size)
-        # let inp: (batch, seq_len, hidden)
-        hiddens = Variable(torch.zeros(seq_len, n_batch, self.hidden_size),
-                           requires_grad=False)
-        hiddens = hiddens.cuda() if use_cuda else hiddens
-        output = hidden
+            for ei in range(seq_len):
+                output = torch.cat((inp[:, ei, :], output), dim=1)
+                output = self.avgpool(output.unsqueeze(1))
+                output = output.squeeze(1)
+                hiddens[ei, :, :] = output
 
-        for ei in range(seq_len):
-            output = torch.cat((inp[:, ei, :], output), dim=1)
-            output = self.avgpool(output.unsqueeze(1))
-            output = output.squeeze(1)
-            hiddens[ei, :, :] = output
         return hiddens, output.unsqueeze(0)
 
     def initHidden(self, batch_size):
@@ -168,13 +184,26 @@ class EncoderRNN(nn.Module):
             # local encoder: input is (rt, re, rm)
             embedded = self.embedding(inputs['rt'], inputs['re'], inputs['rm'])
             inp = embedded.permute(1, 0, 2)
+            # inp (seq_len, batch, emb_dim)
+            seq_len = embedded.size(1)
+            batch_size = embedded.size(0)
+            embed_dim = embedded.size(2)
+            outputs = Variable(torch.zeros(seq_len, batch_size, embed_dim))
+            outputs = outputs.cuda() if use_cuda else outputs
+
+            for ei in range(seq_len):
+                if ei > 0 and ei % 32 == 0:
+                    hidden = self.initHidden(batch_size)
+                seq_i = inp[ei, :, :].unsqueeze(0)
+                # inputs of size: (1, batch, emb_dim)
+                output, hidden = self.gru(seq_i, hidden)
+                # output of size: (1, batch, emb_dim)
+                outputs[ei, :, :] = output[0, :, :]
         else:
-            # global encoder: input is local_hidden_states
-            inp = inputs['local_hidden_states']
-        output, hidden = self.gru(inp, hidden)
-        # output shape (seq_len, batch, hidden_size * num_directions)
+            outputs, hidden = self.gru(inputs['local_hidden_states'], hidden)
+        # output (seq_len, batch, hidden_size * num_directions)
         # 1. hidden is the at t = seq_len
-        return output, hidden
+        return outputs, hidden
 
     def initHidden(self, batch_size):
         result = Variable(torch.zeros(self.n_layers, batch_size, self.hidden_size), requires_grad=False)
@@ -198,23 +227,32 @@ class EncoderBiLSTM(nn.Module):
 
     def forward(self, inputs, hidden):
         # embedded is of size (n_batch, seq_len, emb_dim)
+        # lstm needs: (seq_len, batch, input_size)
+        # lstm output: (seq_len, batch, hidden_size * num_directions)
         if self.level == 'local':
             embedded = self.embedding(inputs['rt'], inputs['re'], inputs['rm'])
-            # aligned it to permute
-            # embedded = torch.transpose(embedded, 0, 1)
+            # local encoder: input is (rt, re, rm)
             inp = embedded.permute(1, 0, 2)
+            # inp (seq_len, batch, emb_dim)
+            seq_len = embedded.size(1)
+            batch_size = embedded.size(0)
+            embed_dim = embedded.size(2)
+            outputs = Variable(torch.zeros(seq_len, batch_size, embed_dim))
+            outputs = outputs.cuda() if use_cuda else outputs
+
+            for ei in range(seq_len):
+                if ei > 0 and ei % 32 == 0:
+                    hidden = self.initHidden(batch_size)
+                seq_i = inp[ei, :, :].unsqueeze(0)
+                # inputs of size: (1, batch, emb_dim)
+                output, hidden = self.bilstm(seq_i, hidden)
+                # output of size: (1, batch, emb_dim)
+                outputs[ei, :, :] = output[0, :, :]
+
         else:
             inp = inputs['local_hidden_states']
-
-        # lstm needs: (seq_len, batch, input_size)
-        bilstm_outs, nh = self.bilstm(inp, hidden)
-        # bilstm_outs: (seq_len, batch, hidden_size * num_directions )
-        # output = torch.transpose(bilstm_outs, 0, 1)
-        # output = torch.transpose(output, 1, 2)
-        # output = F.tanh(output)
-        # output = F.max_pool1d(output, output.size(2)).squeeze(2)
-        # Ken modified the output order (original is output, bilstm_out)
-        return bilstm_outs, nh
+            outputs, hidden = self.bilstm(inp, hidden)
+        return outputs, hidden
 
     def initHidden(self, batch_size):
         forward = Variable(torch.zeros(2 * self.n_layers, batch_size, self.hidden_size // 2), requires_grad=False)
@@ -248,21 +286,34 @@ class EncoderBiLSTMMaxPool(nn.Module):
 
     def forward(self, inputs, hidden):
         # embedded is of size (n_batch, seq_len, emb_dim)
+        # lstm needs: (seq_len, batch, input_size)
         if self.level == 'local':
             embedded = self.embedding(inputs['rt'], inputs['re'], inputs['rm'])
-            # aligned it to permute
-            # embedded = torch.transpose(embedded, 0, 1)
             inp = embedded.permute(1, 0, 2)
+            seq_len = embedded.size(1)
+            batch_size = embedded.size(0)
+            embed_dim = embedded.size(2)
+            bilstm_outs = Variable(torch.zeros(seq_len, batch_size, embed_dim))
+            bilstm_outs = bilstm_outs.cuda() if use_cuda else bilstm_outs
+
+            for ei in range(seq_len):
+                if ei > 0 and ei % 32 == 0:
+                    hidden = self.initHidden(batch_size)
+
+                inputs = inp[ei, :, :].unsqueeze(0)
+                # inputs of size: (1, batch, emb_dim)
+                outputs, hidden = self.bilstm(inputs, hidden)
+                # output of size: (1, batch, emb_dim)
+                bilstm_outs[ei, :, :] = outputs[0, :, :]
+
         else:
             inp = inputs['local_hidden_states']
+            bilstm_outs, nh = self.bilstm(inp, hidden)
 
-        # lstm needs: (seq_len, batch, input_size)
-        bilstm_outs, nh = self.bilstm(inp, hidden)
         # bilstm_outs: (seq_len, batch, hidden_size * num_directions )
         output = bilstm_outs.permute(1, 2, 0)
         # bilstm_outs: (batch, hidden_size * num_directions, seq_len)
         output = F.max_pool1d(output, output.size(2)).squeeze(2)
-        # Ken modified the output order (original is output, bilstm_out)
         return bilstm_outs, output
 
     def initHidden(self, batch_size):

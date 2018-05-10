@@ -85,7 +85,9 @@ def hierarchical_predictwords(rt, re, rm, orm, data, encoder, decoder, embedding
     gnh = global_decoder.initHidden(batch_length)
     lnh = local_decoder.initHidden(batch_length)
 
-    g_input = global_encoder_outputs[:, -1]
+    # g_input = global_encoder_outputs[:, -1]
+    g_input = global_decoder.initHidden(batch_length).permute(1, 2, 0)[:, :, -1]
+    gnh = global_hidden
     l_input = Variable(torch.LongTensor(batch_length).zero_(), requires_grad=False)
     l_input = l_input.cuda() if use_cuda else l_input
 
@@ -98,8 +100,8 @@ def hierarchical_predictwords(rt, re, rm, orm, data, encoder, decoder, embedding
 
     # Initialize the Beam
     # Each Beam cell contains [prob, route,gnh, lnh, g_input, g_attn_weight, atten]
-    beams = [[0, [SOS_TOKEN], gnh, lnh, g_input, None, decoder_attentions]]
-    if decoder.copy:
+    beams = [[0, [(SOS_TOKEN, 0)], gnh, lnh, g_input, None, decoder_attentions]]
+    if local_decoder.copy:
         oov_idx = Variable(torch.LongTensor(orm.shape))    
         oovs = {'<KWN>': 0}
         oovs_id2word = {0:'<KWN>'}
@@ -129,7 +131,9 @@ def hierarchical_predictwords(rt, re, rm, orm, data, encoder, decoder, embedding
             destination = len(route) - 1
 
             # Get the lastest predecition
-            decoder_input = route[-1]
+            decoder_input, inp_type = route[-1]
+            if inp_type == 1:
+                decoder_input = 3 # UNK_TOKEN
 
             # If <EOS>, do not search for it
             if decoder_input == EOS_TOKEN:
@@ -161,7 +165,19 @@ def hierarchical_predictwords(rt, re, rm, orm, data, encoder, decoder, embedding
 
                 # Now we had rm as (batch, input) and combine_attn_weights as (batch, input)
                 # Add up to the pgen probability matrix
-                prob_copy = prob_copy.scatter_add(1, rm, combine_attn_weights)
+                prob_copy = prob_copy.scatter_add(1, orm, combine_attn_weights)
+                
+                prob_oov = Variable(torch.zeros([1, len(oovs)]))
+                prob_oov = prob_oov.cuda() if use_cuda else prob_oov
+
+                prob_oov = prob_oov.scatter_add(1, oov_idx, decoder_attention)
+                # prob_oov = prob_oov.log()
+                prob_ukn = 1 - prob_oov[0,0]
+                prob_oov[:,0] = 0
+                prob_copy[0,3] -= prob_ukn
+                # print(prob_copy)
+                prob_oov *= (1-pgen)
+                prob_oov = prob_oov.log()
 
                 l_output_new = (l_output.exp() + (1 - pgen) * prob_copy).log()
             else:
@@ -172,12 +188,25 @@ def hierarchical_predictwords(rt, re, rm, orm, data, encoder, decoder, embedding
 
             # decode the word
             topv, topi = l_output_new.data.topk(beam_size)
+            if local_decoder.copy:
+                if prob_oov.shape[1] >= beam_size:
+                    copy_topv, copy_topi = prob_oov.data.topk(beam_size)
+                else:
+                    copy_topv, copy_topi = prob_oov.data.topk(prob_oov.shape[1])
 
             for i in range(beam_size):
                 p = topv[0][i]
                 idp = topi[0][i]
-                new_beam = [prob + p, route + [idp], gnh, lnh, lnh[-1, :, :], g_attn_weights, atten]
-                q.push(new_beam, new_beam[0])
+                new_beam = [prob + p, route + [(idp, 0)], gnh, lnh, lnh[-1, :, :], g_attn_weights, atten]
+                q.push(new_beam, new_beam[0].item())
+            if local_decoder.copy:
+                for i in range(copy_topv.shape[1]):
+                    p = copy_topv[0,i]
+                    idp = copy_topi[0,i]
+                    if idp.item()==0:
+                        continue
+                    new_beam = [prob + p, route + [(oovs_id2word[idp.item()], 1)], gnh, lnh, lnh[-1, :, :], g_attn_weights, atten]
+                    q.push(new_beam, new_beam[0].item())
 
         # Keep the highest K probability
         beams = [q.pop() for i in range(beam_size)]
@@ -187,7 +216,13 @@ def hierarchical_predictwords(rt, re, rm, orm, data, encoder, decoder, embedding
             break
 
     # Get decoded_words and decoder_attetntions
-    decoded_words = [langs['summary'].index2word[w.item()] for w in beams[0][1][1:]]
+    # decoded_words = [langs['summary'].index2word[w.item()] for w in beams[0][1][1:]]
+    decoded_words = []
+    for wpair in beams[0][1][1:]:
+        if wpair[1] == 1:
+            decoded_words.append("__"+wpair[0]+"__")
+        else:
+            decoded_words.append(langs['summary'].index2word[wpair[0].item()])
     decoder_attentions = beams[0][6]
     return decoded_words, decoder_attentions[:len(decoded_words)]
 
