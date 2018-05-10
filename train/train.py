@@ -266,7 +266,7 @@ def Plain_seq_train(rt, re, rm, orm, summary, data, encoder, decoder,
     decoder_hidden[0, :, :] = context_vec  # might be zero
     decoder_input = Variable(torch.LongTensor(batch_length).zero_())
     decoder_input = decoder_input.cuda() if use_cuda else decoder_input
-    
+
     # Feed the target as the next input
     copy_ctr = 0
     for di in range(target_length):
@@ -668,11 +668,13 @@ def main(args):
     # For Training
     train_data, train_lang = loaddata(file_loc, 'train',
                                       copy_player=copy_player)
-    if MAX_TRAIN_NUM is not None:
-        train_data = train_data[:MAX_TRAIN_NUM]
-    
-    train_data, oov_dict = data2index(train_data, train_lang, max_sentences=parameters['max_sentence'])
 
+    if parameters['max_train_nums'] is not None:
+        mx_train = parameters['max_train_nums']
+        train_data = train_data[:mx_train]
+    del(parameters['max_train_nums'])
+
+    train_data, oov_dict = data2index(train_data, train_lang, max_sentences=parameters['max_sentence'])
 
     encoder, decoder = train(train_data, train_lang, oov_dict, **parameters)
 
@@ -736,6 +738,8 @@ def parse_argument():
 
     # max_sentence is optional
     ap.add_argument("-maxsentence", "--max_sentence", type=int, default=MAX_SENTENCES)
+
+    ap.add_argument("-maxtrain", "--max_train_nums", type=int, default=MAX_TRAIN_NUM)
 
     return ap.parse_args()
 
