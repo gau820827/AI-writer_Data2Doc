@@ -57,10 +57,9 @@ class docEmbedding(nn.Module):
 
     def __init__(self, rt_size, re_size, rm_size, embedding_dim):
         super(docEmbedding, self).__init__()
-        self.embedding1 = nn.Embedding(rt_size, embedding_dim/3)
-        self.embedding2 = nn.Embedding(re_size, embedding_dim/3)
-        self.embedding3 = nn.Embedding(rm_size, embedding_dim/3)
-        #self.linear = nn.Linear(embedding_dim * 3, embedding_dim)
+        self.embedding1 = nn.Embedding(rt_size, embedding_dim//3)
+        self.embedding2 = nn.Embedding(re_size, embedding_dim//3)
+        self.embedding3 = nn.Embedding(rm_size, embedding_dim//3)
 
     def forward(self, rt, re, rm):
         emb_rt = self.embedding1(rt)
@@ -74,13 +73,10 @@ class docEmbedding(nn.Module):
 
     def init_weights(self):
         initrange = 0.1
-        lin_layers = [self.linear]
         em_layer = [self.embedding1, self.embedding2, self.embedding3]
 
-        for layer in lin_layers + em_layer:
+        for layer in em_layer:
             layer.weight.data.uniform_(-initrange, initrange)
-            if layer in lin_layers:
-                layer.bias.data.fill_(0)
 
 
 class HierarchicalLIN(nn.Module):
@@ -544,7 +540,9 @@ class Attn(nn.Module):
     def __init__(self, hidden_size):
         super(Attn, self).__init__()
         self.hidden_size = hidden_size
-        self.attn = nn.Linear(self.hidden_size, self.hidden_size)
+        self.attn = nn.Linear(self.hidden_size*2, self.hidden_size)
+        self.comb = nn.Linear(self.hidden_size, 1, bias=False)
+        self.conv_attn = None
 
     def forward(self, hidden, encoder_outputs):
         batch_size, seq_len, hidden_size = encoder_outputs.size()
@@ -566,15 +564,17 @@ class Attn(nn.Module):
     def score(self, hidden, encoder_outputs):
         # print('size of hidden: {}'.format(hidden.size()))
         # print('size of encoder_hidden: {}'.format(encoder_output.size()))
-        # energy = self.attn(encoder_outputs)
-        energy = encoder_outputs
+        inp = torch.cat([hidden, encoder_outputs], dim=len(hidden.shape)-1)
+        energy = F.tanh(self.attn(inp))
+        #exit(1)
+        energy = self.comb(energy)
 
         # batch-wise calculate dot-product
-        hidden = hidden.unsqueeze(2)  # (batch, seq, 1, d)
-        energy = energy.unsqueeze(3)  # (batch, seq, d, 1)
+        #hidden = hidden.unsqueeze(2)  # (batch, seq, 1, d)
+        #energy = energy.unsqueeze(3)  # (batch, seq, d, 1)
 
-        energy = torch.matmul(hidden, energy)  # (batch, seq, 1, 1)
+        #energy = torch.matmul(hidden, energy)  # (batch, seq, 1, 1)
 
         # print('size of energies: {}'.format(energy.size()))
 
-        return energy.squeeze(3).squeeze(2)
+        return energy.squeeze(2)

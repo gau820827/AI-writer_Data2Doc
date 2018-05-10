@@ -519,7 +519,7 @@ def main():
     valid_data, oov_dict = data2index(valid_data, train_lang)
     text_generator = evaluate(valid_data, train_lang, embedding_size,
                               encoder_style, decoder_style,
-                              beam_size=10, verbose=True, oov_dict=oov_dict)
+                              beam_size=5, verbose=True, oov_dict=oov_dict)
 
     # Generate Text
     start = time.time()

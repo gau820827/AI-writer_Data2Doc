@@ -93,7 +93,7 @@ def readLang(data_set):
     for v in data_set:
         for word in v.summary:
             # summary
-            if not RepresentsInt(word):
+            if not RepresentsInt(word) and not (word[0].isupper() and len(word)>5):
                 summarize.addword(word)
 
     return rt, re, rm, summarize

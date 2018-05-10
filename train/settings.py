@@ -22,36 +22,34 @@ MAX_TRAIN_NUM = 20
 
 # PRETRAIN is the model name that you want read
 # The naming convention is 'PRETRAIN_iterNum'
-PRETRAIN = 'hi'
-iterNum = 180
-# PRETRAIN = None
-# iterNum = None
+# PRETRAIN = 'pl_copy_th1000'
+# iterNum = 860
+PRETRAIN = None
+iterNum = None
 
 # Default hyper-parameters for training
 EMBEDDING_SIZE = 600
 LR = 0.01  # Adagrad
 # LR = 0.003  # Adam
-EPOCH_TIME = 100
+EPOCH_TIME = 300
 BATCH_SIZE = 1
 GRAD_CLIP = 3
 LAYER_DEPTH = 1
 
 # Default parameters for display
-GET_LOSS = 1
+GET_LOSS = 5
 SAVE_MODEL = 1
 
 # Choose models
 
 # ENCODER_STYLE = 'LIN'
-# ENCODER_STYLE = 'RNN'
-# ENCODER_STYLE = 'BiLSTM'
 # DECODER_STYLE = 'RNN'
 
-ENCODER_STYLE = 'HierarchicalRNN'
+ENCODER_STYLE = 'HierarchicalLIN'
 DECODER_STYLE = 'HierarchicalRNN'
-OUTPUT_FILE = 'hi'
+OUTPUT_FILE = 'hi_copy'
 COPY_PLAYER = True
-TOCOPY = False
+TOCOPY = True
 
 # DATA PREPROCESSING
 MAX_PLAYERS = 31  # information taken from rotowire

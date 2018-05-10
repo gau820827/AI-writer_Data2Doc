@@ -187,6 +187,7 @@ def Hierarchical_seq_train(rt, re, rm, orm, summary, data, encoder, decoder,
         l_output, lnh, l_context, l_attn_weights, pgen = local_decoder(
             l_input, lnh, g_attn_weights, local_encoder_outputs, blocks_len)
 
+        # print(g_attn_weights)
         if local_decoder.copy:
             # print(l_attn_weights.size())  # [batch * blocks, 1, blk_size]
             # print(g_attn_weights.size())  # [batch, 1, blocks]
@@ -256,6 +257,7 @@ def Plain_seq_train(rt, re, rm, orm, summary, data, encoder, decoder,
     inputs = {"rt": rt, "re": re, "rm": rm}
     encoder_outputs, encoder_hiddens = encoder(inputs, init_hidden)
 
+
     # encoder_outputs: (seq_len, batch_size, hidden_dim)
 
     context_vec = encoder_outputs[-1, :, :]
@@ -268,12 +270,14 @@ def Plain_seq_train(rt, re, rm, orm, summary, data, encoder, decoder,
     decoder_input = decoder_input.cuda() if use_cuda else decoder_input
     
     # Feed the target as the next input
-    copy_ctr = 0
+    # copy_ctr = 0
     for di in range(target_length):
 
         decoder_output, decoder_hidden, decoder_context, decoder_attention, pgen = decoder(
 
             decoder_input, decoder_hidden, encoder_outputs)
+
+        # print(decoder_attention)
 
         if decoder.copy:
             prob = Variable(torch.zeros(decoder_output.shape))
@@ -302,7 +306,7 @@ def Plain_seq_train(rt, re, rm, orm, summary, data, encoder, decoder,
             # print(torch.sum(decoder_output_new.exp(), 1))
             #loss += criterion((1-pgen).log(), orm)
             if oov_exist:
-                copy_ctr+=1
+                # copy_ctr+=1
                 idx = Variable(torch.LongTensor([0]))
                 idx = idx.cuda() if use_cuda else idx
                 loss += criterion(prob_oov.log(), idx)
@@ -313,7 +317,7 @@ def Plain_seq_train(rt, re, rm, orm, summary, data, encoder, decoder,
             loss += criterion(decoder_output_new, summary[:, di])
         
         decoder_input = summary[:, di]  # Supervised
-    print("Copy_training: {}".format(copy_ctr))
+    # print("Copy_training: {}".format(copy_ctr))
     return loss
 
 
@@ -529,7 +533,6 @@ def train(train_set, langs, oov_dict, embedding_size=EMBEDDING_SIZE, learning_ra
             iteration += 1
             data, idx_data = get_batch(dt)
             rt, re, rm, orm, summary, osummary = idx_data
-            # print(summary[0])
             # print(osummary[0])
             # print(len(summary[0]))
             # print(len(osummary[0]))
