@@ -10,8 +10,9 @@ from torch import optim
 from preprocessing import data_iter
 from dataprepare import loaddata, data2index
 from model import docEmbedding, Seq2Seq
-from model import EncoderLIN, EncoderBiLSTM, EncoderBiLSTMMaxPool
-from model import HierarchicalRNN, HierarchicalBiLSTM, HierarchicalLIN
+from model import EncoderLIN, EncoderBiLSTM, EncoderBiLSTMMaxPool, EncoderRNN
+from model import HierarchicalLIN, HierarchicalRNN
+from model import HierarchicalBiLSTM, HierarchicalBiLSTMMaxPool
 from model import AttnDecoderRNN, HierarchicalDecoder
 from util import gettime, load_model, show_triplets
 from util import PriorityQueue
@@ -73,12 +74,14 @@ def find_max_block_numbers(batch_length, langs, rm):
 
 
 def initGlobalEncoderInput(MAX_BLOCK, batch_length, input_length, embedding_size,
-                           local_outputs, BLOCK_JUMPS=32):
+                           local_outputs, BLOCK_JUMPS=32, name=None):
     """
     Args: local_outputs: (batch, seq_len, embed_size)
     """
     # print("Max block = ", MAX_BLOCK)
     # print("input length = ", input_length)
+    if name == 'LIN':
+        return local_outputs
     global_input = Variable(torch.zeros(MAX_BLOCK, batch_length,
                                         embedding_size))
     global_input = global_input.cuda() if use_cuda else global_input
@@ -107,7 +110,6 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
     batch_length = rt.size()[0]
     input_length = rt.size()[1]
     target_length = summary.size()[1]
-
     # MAX_BLOCK is the number of global hidden states
     # block_lens is the start position of each block
     MAX_BLOCK, blocks_lens = find_max_block_numbers(batch_length, langs, rm)
@@ -119,23 +121,25 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
 
     loss = 0
 
-    # Encoding
+    # Encoding: Encoder output all has (seq_len, batch, hid_size)
     init_local_hidden = LocalEncoder.initHidden(batch_length)
     init_global_hidden = GlobalEncoder.initHidden(batch_length)
     local_encoder_outputs, local_hidden = LocalEncoder(inputs, init_local_hidden)
     global_input = initGlobalEncoderInput(MAX_BLOCK, batch_length, input_length,
-                                          embedding_size, local_encoder_outputs)
+                                          embedding_size, local_encoder_outputs,
+                                          name=GlobalEncoder.name)
     global_encoder_outputs, global_hidden = GlobalEncoder({"local_hidden_states":
-                                                          global_input}, init_global_hidden)
+                                                           global_input}, init_global_hidden)
+
     """
-    Encoder Result Dimension: (batch, sequence length, hidden size)
+    Encoder Final Dimension: (batch, sequence length, hidden size)
     """
     local_encoder_outputs = local_encoder_outputs.permute(1, 0, 2)
     global_encoder_outputs = global_encoder_outputs.permute(1, 0, 2)
 
     # Debugging: Test encoder outputs
-    # print(local_encoder_outputs)
-    # print(global_encoder_outputs)
+    # print("Local Encoder shape: ", local_encoder_outputs.shape)
+    # print("Global Encoder shape: ", global_encoder_outputs.shape)
 
     # The decoder init for developing
     global_decoder = decoder.global_decoder
@@ -144,7 +148,6 @@ def Hierarchical_seq_train(rt, re, rm, summary, encoder, decoder,
     # Currently, we pad all box-scores to be the same length and blocks
     blocks_len = blocks_lens[0]
 
-    # Initialize the inputs for global decoder and local decoder
     """
     g_input_{0} should be 0 vector with dim (batch, hidden)
     gnh should be the last hidden state of global encoder
@@ -362,16 +365,24 @@ def train(train_set, langs, embedding_size=EMBEDDING_SIZE, learning_rate=LR,
     if encoder_style == 'LIN':
         encoder = EncoderLIN(embedding_size, emb)
 
+    elif encoder_style == 'RNN':
+        encoder = EncoderRNN(embedding_size, emb)
+
     elif encoder_style == 'BiLSTM':
         encoder = EncoderBiLSTM(embedding_size, emb, n_layers=layer_depth)
 
-    elif encoder_style == 'BiLSTMMax':
+    elif encoder_style == 'BiLSTMMaxPool':
         encoder = EncoderBiLSTMMaxPool(embedding_size, emb, n_layers=layer_depth)
 
     elif encoder_style == 'HierarchicalBiLSTM':
         encoder_args = {"hidden_size": embedding_size, "local_embed": emb,
                         "n_layers": layer_depth}
         encoder = HierarchicalBiLSTM(**encoder_args)
+
+    elif encoder_style == 'HierarchicalBiLSTMMaxPool':
+        encoder_args = {"hidden_size": embedding_size, "local_embed": emb,
+                        "n_layers": layer_depth}
+        encoder = HierarchicalBiLSTMMaxPool(**encoder_args)
 
     elif encoder_style == 'HierarchicalLIN':
         encoder_args = {"hidden_size": embedding_size, "local_embed": emb}
@@ -788,9 +799,7 @@ def evaluate(encoder, decoder, valid_set, lang,
 
 def setupconfig(args):
     """Set up and display the configuration."""
-    # print("Command Line Options:")
-    # # Read in command line parameters.
-
+    # TODO: restricted lin for layer = 1
     parameters = {}
     for arg in vars(args):
         parameters[arg] = getattr(args, arg)
@@ -808,6 +817,10 @@ def setupconfig(args):
     if parameters['encoder_style'] in plain_choices and parameters['decoder_style'] != 'RNN':
         print("You must give me two plain NNs!!!!!!!!!")
         quit()
+
+    if (parameters['encoder_style'] == 'LIN' or parameters['encoder_style'] == 'HierarchicalLIN') and parameters['layer_depth'] != 1:
+        print("Linear encoder only has depth = 1, adjust layer to 1.")
+        parameters['layer_depth'] = 1
 
     copy_player = COPY_PLAYER
     for arg in parameters:
@@ -848,8 +861,8 @@ def main(args):
 
 def parse_argument():
     """Hyperparmeter tuning."""
-    encoder_choices = ['LIN', 'BiLSTM', 'RNN',
-                       'BiLSTMMax', 'HierarchicalRNN',
+    encoder_choices = ['LIN', 'BiLSTM', 'RNN', 'BiLSTMMaxPool',
+                       'HierarchicalRNN', 'HierarchicalBiLSTMMaxPool',
                        'HierarchicalBiLSTM', 'HierarchicalLIN']
 
     decoder_choices = ['RNN', 'HierarchicalRNN']
@@ -899,7 +912,6 @@ def parse_argument():
     ap.add_argument("-maxsentence", "--max_sentence", type=int, default=MAX_SENTENCES)
 
     return ap.parse_args()
-
 
 if __name__ == '__main__':
     args = parse_argument()
