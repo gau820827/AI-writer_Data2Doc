@@ -170,7 +170,8 @@ def hierarchical_predictwords(rt, re, rm, orm, data, encoder, decoder, embedding
                 prob_oov = Variable(torch.zeros([1, len(oovs)]))
                 prob_oov = prob_oov.cuda() if use_cuda else prob_oov
 
-                prob_oov = prob_oov.scatter_add(1, oov_idx, decoder_attention)
+                prob_oov = prob_oov.scatter_add(1, oov_idx, combine_attn_weights)
+                print(g_attn_weights)
                 # prob_oov = prob_oov.log()
                 prob_ukn = 1 - prob_oov[0,0]
                 prob_oov[:,0] = 0

@@ -23,9 +23,9 @@ MAX_TRAIN_NUM = 20
 # PRETRAIN is the model name that you want read
 # The naming convention is 'PRETRAIN_iterNum'
 PRETRAIN = 'hi'
-iterNum = 760
-PRETRAIN = None
-iterNum = None
+iterNum = 180
+# PRETRAIN = None
+# iterNum = None
 
 # Default hyper-parameters for training
 EMBEDDING_SIZE = 600
@@ -49,9 +49,9 @@ SAVE_MODEL = 1
 
 ENCODER_STYLE = 'HierarchicalRNN'
 DECODER_STYLE = 'HierarchicalRNN'
-OUTPUT_FILE = 'hi_copy'
+OUTPUT_FILE = 'hi'
 COPY_PLAYER = True
-TOCOPY = True
+TOCOPY = False
 
 # DATA PREPROCESSING
 MAX_PLAYERS = 31  # information taken from rotowire
