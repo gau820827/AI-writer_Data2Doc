@@ -2,6 +2,7 @@
 import torch
 file_loc = '../boxscore-data/rotowire/'
 use_cuda = torch.cuda.is_available()
+# use_cuda = False
 
 MAX_LENGTH = 800
 # USE_MODEL = None
@@ -21,10 +22,10 @@ MAX_TRAIN_NUM = 20
 
 # PRETRAIN is the model name that you want read
 # The naming convention is 'PRETRAIN_iterNum'
-# PRETRAIN = 'pl_copy_test'
-PRETRAIN = None
-iterNum = None
-# iterNum = 300
+PRETRAIN = 'hi'
+# PRETRAIN = None
+# iterNum = None
+iterNum = 360
 
 # Default hyper-parameters for training
 EMBEDDING_SIZE = 600
@@ -42,13 +43,13 @@ SAVE_MODEL = 1
 # Choose models
 
 # ENCODER_STYLE = 'LIN'
-ENCODER_STYLE = 'RNN'
+# ENCODER_STYLE = 'RNN'
 # ENCODER_STYLE = 'BiLSTM'
-DECODER_STYLE = 'RNN'
+# DECODER_STYLE = 'RNN'
 
-# ENCODER_STYLE = 'HierarchicalBiLSTM'
-# DECODER_STYLE = 'HierarchicalRNN'
-OUTPUT_FILE = 'pl_nonum'
+ENCODER_STYLE = 'HierarchicalRNN'
+DECODER_STYLE = 'HierarchicalRNN'
+OUTPUT_FILE = 'hi'
 COPY_PLAYER = True
 TOCOPY = False
 

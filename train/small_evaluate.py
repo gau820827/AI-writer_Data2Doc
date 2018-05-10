@@ -99,6 +99,24 @@ def hierarchical_predictwords(rt, re, rm, orm, data, encoder, decoder, embedding
     # Initialize the Beam
     # Each Beam cell contains [prob, route,gnh, lnh, g_input, g_attn_weight, atten]
     beams = [[0, [SOS_TOKEN], gnh, lnh, g_input, None, decoder_attentions]]
+    if decoder.copy:
+        oov_idx = Variable(torch.LongTensor(orm.shape))    
+        oovs = {'<KWN>': 0}
+        oovs_id2word = {0:'<KWN>'}
+        oovs_ctr = len(oovs)
+        # for i in range(orm.shape[1]):
+        #     print("{} {} {}".format(data[0][0][i] ,rm[0,i], orm[0,i]))
+        for i in range(orm.shape[1]):
+            w = data[0][0][i][2]
+            if orm[0,i].item() == 3:
+                if w not in oovs:
+                    oovs[w] = oovs_ctr
+                    oovs_id2word[oovs_ctr] = w
+                    oovs_ctr += 1
+                oov_idx[0,i] = oovs[w]
+            else:
+                oov_idx[0,i] = 0
+        oov_idx = oov_idx.cuda() if use_cuda else oov_idx
 
     # For each step
     for di in range(target_length):
