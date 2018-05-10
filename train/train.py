@@ -128,11 +128,7 @@ def Hierarchical_seq_train(rt, re, rm, orm, summary, data, encoder, decoder,
                                           embedding_size, local_encoder_outputs,
                                           name=GlobalEncoder.name)
     global_encoder_outputs, global_hidden = GlobalEncoder({"local_hidden_states":
-<<<<<<< HEAD
                                                           global_input}, init_global_hidden)
-=======
-                                                           global_input}, init_global_hidden)
->>>>>>> origin/encoders
 
     """
     Encoder Final Dimension: (batch, sequence length, hidden size)
