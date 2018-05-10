@@ -34,6 +34,7 @@ PAD_TOKEN = 2
 EOB_TOKEN = 4
 BLK_TOKEN = 5
 
+
 def hierarchical_predictwords(rt, re, rm, orm, data, encoder, decoder, embedding_size, langs, oov_dict, beam_size):
     """The function will predict the sentecnes given boxscore.
 
@@ -61,7 +62,8 @@ def hierarchical_predictwords(rt, re, rm, orm, data, encoder, decoder, embedding
     init_global_hidden = GlobalEncoder.initHidden(batch_length)
     local_encoder_outputs, local_hidden = LocalEncoder(inputs, init_local_hidden)
     global_input = initGlobalEncoderInput(MAX_BLOCK, batch_length, input_length,
-                                          embedding_size, local_encoder_outputs)
+                                          embedding_size, local_encoder_outputs,
+                                          name=GlobalEncoder.name)
     global_encoder_outputs, global_hidden = GlobalEncoder({"local_hidden_states":
                                                           global_input}, init_global_hidden)
     """
@@ -102,9 +104,9 @@ def hierarchical_predictwords(rt, re, rm, orm, data, encoder, decoder, embedding
     # Each Beam cell contains [prob, route,gnh, lnh, g_input, g_attn_weight, atten]
     beams = [[0, [(SOS_TOKEN, 0)], gnh, lnh, g_input, None, decoder_attentions]]
     if local_decoder.copy:
-        oov_idx = Variable(torch.LongTensor(orm.shape))    
+        oov_idx = Variable(torch.LongTensor(orm.shape))
         oovs = {'<KWN>': 0}
-        oovs_id2word = {0:'<KWN>'}
+        oovs_id2word = {0: '<KWN>'}
         oovs_ctr = len(oovs)
         # for i in range(orm.shape[1]):
         #     print("{} {} {}".format(data[0][0][i] ,rm[0,i], orm[0,i]))
@@ -139,17 +141,20 @@ def hierarchical_predictwords(rt, re, rm, orm, data, encoder, decoder, embedding
             if decoder_input == EOS_TOKEN:
                 q.push(beam, prob)
                 continue
-            
+
             if di == 0 or decoder_input == BLK_TOKEN:
                 g_output, gnh, g_context, g_attn_weights = global_decoder(
                     g_input, gnh, global_encoder_outputs)
+
+                # Reset the local init status
+                lnh = gnh
 
             l_input = Variable(torch.LongTensor([decoder_input]), requires_grad=False)
             l_input = l_input.cuda() if use_cuda else l_input
 
             l_output, lnh, l_context, l_attn_weights, pgen = local_decoder(
                 l_input, lnh, g_attn_weights, local_encoder_outputs, blocks_len)
-            
+
             l_attn_weights = l_attn_weights.squeeze(1)
             bg_attn_weights = g_attn_weights.view(batch_length * len(blocks_len), -1)
             # print(l_attn_weights)
@@ -166,12 +171,12 @@ def hierarchical_predictwords(rt, re, rm, orm, data, encoder, decoder, embedding
                 # Now we had rm as (batch, input) and combine_attn_weights as (batch, input)
                 # Add up to the pgen probability matrix
                 prob_copy = prob_copy.scatter_add(1, orm, combine_attn_weights)
-                
+
                 prob_oov = Variable(torch.zeros([1, len(oovs)]))
                 prob_oov = prob_oov.cuda() if use_cuda else prob_oov
 
                 prob_oov = prob_oov.scatter_add(1, oov_idx, combine_attn_weights)
-                print(g_attn_weights)
+                # print(g_attn_weights)
                 # prob_oov = prob_oov.log()
                 prob_ukn = 1 - prob_oov[0,0]
                 prob_oov[:,0] = 0
