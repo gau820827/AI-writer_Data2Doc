@@ -128,7 +128,11 @@ def Hierarchical_seq_train(rt, re, rm, orm, summary, data, encoder, decoder,
                                           embedding_size, local_encoder_outputs,
                                           name=GlobalEncoder.name)
     global_encoder_outputs, global_hidden = GlobalEncoder({"local_hidden_states":
+<<<<<<< HEAD
                                                           global_input}, init_global_hidden)
+=======
+                                                           global_input}, init_global_hidden)
+>>>>>>> origin/encoders
 
     """
     Encoder Final Dimension: (batch, sequence length, hidden size)
@@ -414,6 +418,9 @@ embedding_size, learning_rate, pretrain, layer_depth, to_copy, iter_num, load_op
     elif encoder_style == 'RNN':
         encoder = EncoderRNN(embedding_size, emb)
 
+    elif encoder_style == 'RNN':
+        encoder = EncoderRNN(embedding_size, emb)
+
     elif encoder_style == 'BiLSTM':
         encoder = EncoderBiLSTM(embedding_size, emb, n_layers=layer_depth)
 
@@ -617,9 +624,7 @@ def train(train_set, langs, oov_dict, embedding_size=EMBEDDING_SIZE, learning_ra
 
 def setupconfig(args):
     """Set up and display the configuration."""
-    # print("Command Line Options:")
-    # # Read in command line parameters.
-
+    # TODO: restricted lin for layer = 1
     parameters = {}
     for arg in vars(args):
         parameters[arg] = getattr(args, arg)

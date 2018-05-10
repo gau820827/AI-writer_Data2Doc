@@ -68,8 +68,13 @@ class docEmbedding(nn.Module):
         emb_rm = self.embedding3(rm)
 
         emb_all = torch.cat([emb_rt, emb_re, emb_rm], dim=len(rt.size()))
+<<<<<<< HEAD
         #output = self.linear(emb_all)
         output = emb_all
+=======
+        output = F.relu(self.linear(emb_all))
+        # output = self.linear(emb_all)
+>>>>>>> origin/encoders
         return output
 
     def init_weights(self):
@@ -99,7 +104,13 @@ class EncoderLIN(nn.Module):
     representations to initialize the decoder.
 
     """
+<<<<<<< HEAD
     def __init__(self, hidden_size, embedding_layer, level='plain'):
+=======
+
+    def __init__(self, hidden_size, embedding_layer, level='plain'):
+        """."""
+>>>>>>> origin/encoders
         super(EncoderLIN, self).__init__()
         self.name = 'LIN'
         self.level = level
@@ -114,7 +125,10 @@ class EncoderLIN(nn.Module):
         # embedded (n_batch, seq_len, emb_dim)
         # global inp: MAX_BLOCK, batch_length, input_length
         # hiddens (max_length, batch, hidden size)
+<<<<<<< HEAD
         # inp: (batch, seq_len, hidden)
+=======
+>>>>>>> origin/encoders
 
         if self.level == 'global':
             # AvgPool for each row as R, AvgPool for each
@@ -153,6 +167,7 @@ class EncoderRNN(nn.Module):
     """Vanilla encoder using pure gru."""
     def __init__(self, hidden_size, embedding_layer, n_layers=LAYER_DEPTH, level='plain'):
         super(EncoderRNN, self).__init__()
+        self.name = 'RNN'
         self.level = level
         self.n_layers = n_layers
         self.hidden_size = hidden_size
@@ -161,18 +176,26 @@ class EncoderRNN(nn.Module):
         self.gru = nn.GRU(hidden_size, hidden_size, num_layers=self.n_layers)
 
     def forward(self, inputs, hidden):
-        # embedded is of size (n_batch, seq_len, emb_dim)
+        # emb (n_batch, seq_len, emb_dim)
+        # inp (seq_len, batch, emb_dim)
         # gru needs (seq_len, n_batch, emb_dim)
         if self.level == 'global':
             outputs, hidden = self.gru(inputs['local_hidden_states'], hidden)
         else:
+<<<<<<< HEAD
             # local encoder: input is (rt, re, rm)
+=======
+>>>>>>> origin/encoders
             embedded = self.embedding(inputs['rt'], inputs['re'], inputs['rm'])
             inp = embedded.permute(1, 0, 2)
             if self.level == 'plain':
                 outputs, hidden = self.gru(inp, hidden)
             else:
+<<<<<<< HEAD
                 # inp (seq_len, batch, emb_dim)
+=======
+                # Local.
+>>>>>>> origin/encoders
                 seq_len, batch_size, embed_dim = inp.size()
                 outputs = Variable(torch.zeros(seq_len, batch_size, embed_dim))
                 outputs = outputs.cuda() if use_cuda else outputs
@@ -184,8 +207,13 @@ class EncoderRNN(nn.Module):
                     output, hidden = self.gru(seq_i, hidden)
                     # output of size: (1, batch, emb_dim)
                     outputs[ei, :, :] = output[0, :, :]
+<<<<<<< HEAD
             # outputs (seq_len, batch, hidden_size * num_directions)
             # hidden is the at t = seq_len
+=======
+        # outputs (seq_len, batch, hidden_size * num_directions)
+        # hidden is the at t = seq_len
+>>>>>>> origin/encoders
         return outputs, hidden
 
     def initHidden(self, batch_size):
@@ -226,7 +254,11 @@ class EncoderBiLSTM(nn.Module):
         if self.level == 'global':
             inp = inputs['local_hidden_states']
             outputs, (hn, cn) = self.bilstm(inp, hidden)
+<<<<<<< HEAD
             # hn: (num_layers * num_directions, batch, hidden_size):            
+=======
+            # hn: (num_layers * num_directions, batch, hidden_size):
+>>>>>>> origin/encoders
             return outputs, hn.view(self.n_layers, -1, self.hidden_size)
         else:
             embedded = self.embedding(inputs['rt'], inputs['re'], inputs['rm'])
@@ -236,6 +268,7 @@ class EncoderBiLSTM(nn.Module):
             else:
                 # Local.
                 seq_len, batch_size, embed_dim = inp.size()
+<<<<<<< HEAD
             outputs = Variable(torch.zeros(seq_len, batch_size, embed_dim))
             outputs = outputs.cuda() if use_cuda else outputs
 
@@ -248,11 +281,26 @@ class EncoderBiLSTM(nn.Module):
                 output, (hn, cn) = self.bilstm(seq_i, hidden)
                 outputs[ei, :, :] = output[0, :, :]
                 # output of size: (1, batch, emb_dim)
+=======
+                outputs = Variable(torch.zeros(seq_len, batch_size, embed_dim))
+                outputs = outputs.cuda() if use_cuda else outputs
+                for ei in range(seq_len):
+                    if ei > 0 and ei % 32 == 0:
+                        # Local needs to reinit by block.
+                        hidden = self.initHidden(batch_size)
+                    seq_i = inp[ei, :, :].unsqueeze(0)
+                    # inputs of size: (1, batch, emb_dim)
+                    output, (hn, cn) = self.bilstm(seq_i, hidden)
+                    outputs[ei, :, :] = output[0, :, :]
+                    # output of size: (1, batch, emb_dim)
+>>>>>>> origin/encoders
             return outputs, hn.view(self.n_layers, -1, self.hidden_size)
 
     def initHidden(self, batch_size):
-        forward = Variable(torch.zeros(2 * self.n_layers, batch_size, self.hidden_size // 2), requires_grad=False)
-        backward = Variable(torch.zeros(2 * self.n_layers, batch_size, self.hidden_size // 2), requires_grad=False)
+        forward = Variable(torch.zeros(2 * self.n_layers, batch_size,
+                                       self.hidden_size // 2), requires_grad=False)
+        backward = Variable(torch.zeros(2 * self.n_layers, batch_size,
+                                        self.hidden_size // 2), requires_grad=False)
         if use_cuda:
             return (forward.cuda(), backward.cuda())
         else:
@@ -313,8 +361,10 @@ class EncoderBiLSTMMaxPool(nn.Module):
         return bilstm_outs, output.unsqueeze(0)
 
     def initHidden(self, batch_size):
-        forward = Variable(torch.zeros(2 * self.n_layers, batch_size, self.hidden_size // 2), requires_grad=False)
-        backward = Variable(torch.zeros(2 * self.n_layers, batch_size, self.hidden_size // 2), requires_grad=False)
+        forward = Variable(torch.zeros(2 * self.n_layers, batch_size,
+                                       self.hidden_size // 2), requires_grad=False)
+        backward = Variable(torch.zeros(2 * self.n_layers, batch_size,
+                                        self.hidden_size // 2), requires_grad=False)
         if use_cuda:
             return (forward.cuda(), backward.cuda())
         else:
@@ -560,7 +610,10 @@ class Attn(nn.Module):
     def score(self, hidden, encoder_outputs):
         # print('size of hidden: {}'.format(hidden.size()))
         # print('size of encoder_hidden: {}'.format(encoder_output.size()))
+<<<<<<< HEAD
         # energy = self.attn(encoder_outputs)
+=======
+>>>>>>> origin/encoders
         energy = encoder_outputs
 
         # batch-wise calculate dot-product
