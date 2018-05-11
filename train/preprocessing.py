@@ -221,7 +221,7 @@ def data_iter(source, batch_size=32, shuffle=True):
         random.shuffle(source)
 
     # Get batch based on similar length of sentences
-    source.sort(key=lambda boxdata: boxdata.sent_leng)
+    # source.sort(key=lambda boxdata: boxdata.sent_leng)
     while True:
         start += batch_size
         if start > dataset_size - batch_size:

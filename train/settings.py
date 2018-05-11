@@ -18,12 +18,12 @@ MAX_LENGTH = 800
 
 # Parameter for training
 MAX_SENTENCES = None
-MAX_TRAIN_NUM = 1000
+MAX_TRAIN_NUM = None
 
 # PRETRAIN is the model name that you want read
 # The naming convention is 'PRETRAIN_iterNum'
 PRETRAIN = 'hi_copy'
-iterNum = 240
+iterNum = 12000
 # PRETRAIN = None
 # iterNum = None
 

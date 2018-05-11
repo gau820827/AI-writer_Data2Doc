@@ -421,6 +421,8 @@ def evaluate(valid_set, langs, embedding_size,
 
         # Get data
         iteration += 1
+        # if iteration < 658:
+            # continue
         data, idx_data = get_batch(dt)
         rt, re, rm, orm, summary, osummary = idx_data
 
@@ -459,6 +461,7 @@ def evaluate(valid_set, langs, embedding_size,
         res = ' '.join([ w for w in decoded_words[:-1] if w!='<PAD>'])
         # res = ' '.join(decoded_words[:-1])
         if verbose:
+            # print(data[0])
             print("Generate Summary {}:".format(iteration))
             print(res)
 
@@ -471,38 +474,38 @@ def evaluate(valid_set, langs, embedding_size,
                 print(word, end=' ')
             print(' ')
             
-            block_num = 0
-            ctr = 0
-            # count block
-            while ctr < decoder_attentions.shape[1]:
-                ctr_end = ctr
-                while ctr_end < rt.shape[1] and ctr_end < decoder_attentions.shape[1] and rt[0, ctr_end] != EOB_TOKEN :
-                    ctr_end+=1
-                block_num += 1
-                if ctr_end >= rt.shape[1]:
-                    break
-                ctr = ctr_end+1
-            print(block_num)
-            fig = plt.figure(figsize=(40,60))
-            i = 0
-            ctr = 0
-            while ctr < decoder_attentions.shape[1]:
-                ctr_end = ctr
-                while ctr_end < rt.shape[1] and ctr_end < decoder_attentions.shape[1] and rt[0,ctr_end] != EOB_TOKEN :
-                    ctr_end +=1
-                ax = fig.add_subplot(block_num, 1 ,i+1)
-                mat = ax.matshow(decoder_attentions.t()[ ctr: ctr_end+1 ,:], interpolation='nearest')
-                ctr = ctr_end+1
-                i+=1
-            fig.subplots_adjust(right=0.8)
-            cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
-            fig.colorbar(mat, cax=cbar_ax)
+            # block_num = 0
+            # ctr = 0
+            # # count block
+            # while ctr < decoder_attentions.shape[1]:
+            #     ctr_end = ctr
+            #     while ctr_end < rt.shape[1] and ctr_end < decoder_attentions.shape[1] and rt[0, ctr_end] != EOB_TOKEN :
+            #         ctr_end+=1
+            #     block_num += 1
+            #     if ctr_end >= rt.shape[1]:
+            #         break
+            #     ctr = ctr_end+1
+            # print(block_num)
+            # fig = plt.figure(figsize=(40,60))
+            # i = 0
+            # ctr = 0
+            # while ctr < decoder_attentions.shape[1]:
+            #     ctr_end = ctr
+            #     while ctr_end < rt.shape[1] and ctr_end < decoder_attentions.shape[1] and rt[0,ctr_end] != EOB_TOKEN :
+            #         ctr_end +=1
+            #     ax = fig.add_subplot(block_num, 1 ,i+1)
+            #     mat = ax.matshow(decoder_attentions.t()[ ctr: ctr_end+1 ,:], interpolation='nearest')
+            #     ctr = ctr_end+1
+            #     i+=1
+            # fig.subplots_adjust(right=0.8)
+            # cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
+            # fig.colorbar(mat, cax=cbar_ax)
 
             #ax.set_xticklabels(decoded_words)
             #ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
             # ax.set_yticklabels(['']+alpha)
 
-            plt.savefig("./figures/"+PRETRAIN+'_'+str(iteration)+'.png')
+            # plt.savefig("./figures/"+PRETRAIN+'_'+str(iteration)+'.png')
         yield res
 
         
