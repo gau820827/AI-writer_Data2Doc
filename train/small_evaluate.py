@@ -90,9 +90,9 @@ def hierarchical_predictwords(rt, re, rm, encoder, decoder, embedding_size, lang
     # l_input = l_input.cuda() if use_cuda else l_input
 
     g_input = global_decoder.initHidden(batch_length).permute(1, 2, 0)[:, :, -1]
-    print(g_input.size())
+    # print(g_input.size())
     gnh = global_hidden
-    print(gnh.size())
+    # print(gnh.size())
     lnh = local_decoder.initHidden(batch_length)
 
     # Reshape the local_encoder outputs to (batch * blocks, blk_size, hidden)
@@ -128,7 +128,7 @@ def hierarchical_predictwords(rt, re, rm, encoder, decoder, embedding_size, lang
                 g_output, gnh, g_context, g_attn_weights = global_decoder(
                     g_input, gnh, global_encoder_outputs)
                 lnh = gnh
-                print(g_attn_weights)
+                # print(g_attn_weights)
 
             l_input = Variable(torch.LongTensor([decoder_input]), requires_grad=False)
             l_input = l_input.cuda() if use_cuda else l_input
@@ -261,8 +261,8 @@ def predictwords(rt, re, rm, encoder, decoder, embedding_size, langs, beam_size)
             
             
             for i in range(beam_size):
-                p = topv[0,i]
-                idp = topi[0,i]
+                p = topv[0, i]
+                idp = topi[0, i]
                 new_beam = [prob + p, route + [idp], decoder_hidden, atten]
                 q.push(new_beam, new_beam[0])
 
@@ -280,13 +280,13 @@ def predictwords(rt, re, rm, encoder, decoder, embedding_size, langs, beam_size)
 
 
 def evaluate(valid_set, langs, embedding_size,
-             encoder_style, decoder_style, 
+             encoder_style, decoder_style,
              use_model, beam_size=1, verbose=False):
     """The evaluate procedure."""
 
-    encoder, decoder, _, _ = model_initialization(encoder_style, 
-                                            decoder_style, langs, 
-                                            embedding_size, 0, use_model)
+    encoder, decoder, _, _ = model_initialization(encoder_style,
+                                                  decoder_style, langs,
+                                                  embedding_size, 0, use_model)
 
     if decoder_style == 'HierarchicalRNN':
         decode_func = hierarchical_predictwords
@@ -300,14 +300,16 @@ def evaluate(valid_set, langs, embedding_size,
     model.eval()
     # Get evaluate data
     valid_iter = data_iter(valid_set, batch_size=1, shuffle=False)
-
     iteration = 0
+    gen_f = open('./models/' + Model_name + '_val_gen_b' + str(beam_size) + '.txt', 'a')
+    ref_f = open('./models/' + Model_name + '_val_ref_b' + str(beam_size) + '.txt', 'a')
     for dt in valid_iter:
 
         # Get data
         iteration += 1
         data, idx_data = get_batch(dt)
         rt, re, rm, summary = idx_data
+
 
         # Debugging: check the input triplets
         # show_triplets(data[0][0])
@@ -332,44 +334,45 @@ def evaluate(valid_set, langs, embedding_size,
         # Get decoding words and attention matrix
         decoded_words, decoder_attentions = model.seq_decode(rt, re, rm, beam_size)
 
-        res = ' '.join([ w for w in decoded_words[:-1] if w!='<PAD>'])
+        res = ' '.join([w for w in decoded_words[:-1] if w != '<PAD>' and w != '<BLK>' and w != '<EOS>'])
+        gen_f.write(res + '\n')
+        print(res)
+
         # res = ' '.join(decoded_words[:-1])
+
         if verbose:
             print("Generate Summary {}:".format(iteration))
-            print(res)
 
         # # FOR WRITING REPORTS ONLY
         # # Compare to the origin data
             print("Reference Summary:")
             triplets, gold_summary = data[0]
+            reference = ' '.join([word for word in gold_summary])
+            print(reference)
+            ref_f.write(reference + '\n')
+            # print(reference)
+            # print(' ')
+            # print(torch.sum(rt == EOB_TOKEN))
+            # block_num = torch.sum(rt == EOB_TOKEN).item()
+            # ctr = 0
+            # fig = plt.figure(figsize=(40, 60))
+            # for i in range(block_num):
+            #     ctr_end = ctr
+            #     while rt[0,ctr_end] != EOB_TOKEN and ctr_end+1 < rt.shape[1]:
+            #         ctr_end +=1
+            #     ax = fig.add_subplot(block_num, 1 ,i+1)
+            #     mat = ax.matshow(decoder_attentions.t()[ ctr: ctr_end+1 ,:], interpolation='nearest')
+            #     ctr = ctr_end+1
+            # fig.subplots_adjust(right=0.8)
+            # cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
+            # fig.colorbar(mat, cax=cbar_ax)
 
-            for word in gold_summary:
-                print(word, end=' ')
-            print(' ')
-            print(torch.sum(rt==EOB_TOKEN))
-            block_num = torch.sum(rt==EOB_TOKEN).item()
-            ctr = 0
-            fig = plt.figure(figsize=(40,60))
-            for i in range(block_num):
-                ctr_end = ctr
-                while rt[0,ctr_end] != EOB_TOKEN and ctr_end+1 < rt.shape[1]:
-                    ctr_end +=1
-                ax = fig.add_subplot(block_num, 1 ,i+1)
-                mat = ax.matshow(decoder_attentions.t()[ ctr: ctr_end+1 ,:], interpolation='nearest')
-                ctr = ctr_end+1
-            fig.subplots_adjust(right=0.8)
-            cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
-            fig.colorbar(mat, cax=cbar_ax)
+            # #ax.set_xticklabels(decoded_words)
+            # #ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
+            # # ax.set_yticklabels(['']+alpha)
 
-            #ax.set_xticklabels(decoded_words)
-            #ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
-            # ax.set_yticklabels(['']+alpha)
-
-            plt.savefig(Model_name+'_'+str(iteration)+'.png')
+            # plt.savefig(Model_name+'_'+str(iteration)+'.png')
         yield res
-
-        
-
         # showAttention(triplets, decoded_words, decoder_attentions)
     return
 
@@ -390,9 +393,10 @@ def main():
     # Load data for evaluation
     valid_data, _ = loaddata(file_loc, 'valid')
     valid_data = data2index(valid_data, train_lang)
+
     text_generator = evaluate(valid_data, train_lang, embedding_size,
                               encoder_style, decoder_style,
-                              use_model, beam_size=1, verbose=True)
+                              use_model, beam_size=5, verbose=True)
 
     # Generate Text
     start = time.time()

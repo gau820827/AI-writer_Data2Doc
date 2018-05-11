@@ -76,7 +76,7 @@ def readLang(data_set):
             re.addword(triplet[1])
             rm.addword(triplet[2])
             summarize.addword(triplet[2])
-    for v in data_set:    
+    for v in data_set:
         for word in v.summary:
             # summary
             summarize.addword(word)
@@ -98,6 +98,8 @@ def loaddata(data_dir, mode='train', max_len=None):
         A list of reading dataset and a dictionary of Langs
     """
     data_set = readfile(data_dir + mode + '.json')
+
+
     if max_len is not None:
         data_set = data_set[:max_len]
     rt, re, rm, summary = readLang(data_set)
@@ -158,7 +160,7 @@ def data2index(data_set, langs, max_sentences=MAX_SENTENCES):
         # data_set[i].append([idx_triplets] + [idx_summary])
         data_set[i].idx_data = [idx_triplets] + [idx_summary]
         data_set[i].sent_leng = sentence_cnt
-    
+
     return data_set
 
 
@@ -173,9 +175,9 @@ def showsentences(dataset):
 
 
 if __name__ == '__main__':
-    train_data, train_lang = loaddata(file_loc, 'train')
+    # train_data, train_lang = loaddata(file_loc, 'train')
     valid_data, _ = loaddata(file_loc, 'valid')
-    test_data, _ = loaddata(file_loc, 'test')
-    train_data = data2index(train_data, train_lang)
-    valid_data = data2index(valid_data, train_lang)
-    test_data = data2index(test_data, train_lang)
+    # test_data, _ = loaddata(file_loc, 'test')
+    # train_data = data2index(train_data, train_lang)
+    # valid_data = data2index(valid_data, train_lang)
+    # test_data = data2index(test_data, train_lang)
