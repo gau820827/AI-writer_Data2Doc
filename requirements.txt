@@ -8,7 +8,7 @@ coverage==4.2
 codecov==2.0.5
 
 # NLP
-numpy==1.13.3
+numpy==1.22.0
 PyYAML==3.12
 nltk==3.2.5
 scikit-learn==0.19.1
