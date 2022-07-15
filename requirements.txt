@@ -5,7 +5,7 @@ rednose==1.2.1
 
 # Code coverage
 coverage==4.2
-codecov==2.0.5
+codecov==2.0.16
 
 # NLP
 numpy==1.13.3
